@@ -20,6 +20,10 @@ HOST_PASSWORD = "host123"
 REQUIRED_COLS = ["BIL", "NOTEN", "NAMA", "MENU", "MEJA"]
 
 
+# =========================
+# BASIC FUNCTIONS
+# =========================
+
 def clean_csv(df_raw):
     df_raw = df_raw.dropna(how="all").reset_index(drop=True)
     df_raw.columns = [str(col).strip().upper() for col in df_raw.columns]
@@ -30,7 +34,8 @@ def clean_csv(df_raw):
         header_row_index = None
 
         for i in range(len(df_raw)):
-            row_values = [str(v).strip().upper() for v in df_raw.iloc[i].tolist()]
+            row_values = [str(value).strip().upper() for value in df_raw.iloc[i].tolist()]
+
             if all(col in row_values for col in REQUIRED_COLS):
                 header_row_index = i
                 break
@@ -38,13 +43,14 @@ def clean_csv(df_raw):
         if header_row_index is None:
             return pd.DataFrame()
 
-        headers = [str(v).strip().upper() for v in df_raw.iloc[header_row_index].tolist()]
+        headers = [str(value).strip().upper() for value in df_raw.iloc[header_row_index].tolist()]
         df = df_raw.iloc[header_row_index + 1:].copy()
         df.columns = headers
 
     df = df.loc[:, df.columns.notna()]
     df = df.loc[:, [str(col).strip() != "" for col in df.columns]]
     df = df.loc[:, ~df.columns.astype(str).str.upper().str.startswith("UNNAMED")]
+
     df = df.dropna(how="all").reset_index(drop=True)
     df.columns = [str(col).strip().upper() for col in df.columns]
 
@@ -82,7 +88,6 @@ def load_attendance():
                 df["NOTEN"] = df["NOTEN"].str.replace(".0", "", regex=False)
 
             return df
-
         except Exception:
             pass
 
@@ -94,6 +99,14 @@ def load_attendance():
 
 def save_attendance(attendance_df):
     attendance_df.to_csv(ATTENDANCE_FILE, index=False, encoding="utf-8")
+
+
+def reset_attendance():
+    reset_df = pd.DataFrame(columns=[
+        "BIL", "NOTEN", "NAMA", "MENU", "MEJA",
+        "STATUS_KEHADIRAN", "TARIKH_MASA"
+    ])
+    reset_df.to_csv(ATTENDANCE_FILE, index=False, encoding="utf-8")
 
 
 def get_base64_image(image_path):
@@ -113,14 +126,25 @@ def get_updated_time():
     if not files:
         return "Tiada rekod"
 
-    latest = max(files, key=lambda x: x.stat().st_mtime)
+    latest_file = max(files, key=lambda x: x.stat().st_mtime)
     latest_time = datetime.fromtimestamp(
-        latest.stat().st_mtime,
+        latest_file.stat().st_mtime,
         ZoneInfo("Asia/Kuala_Lumpur")
     )
 
     return latest_time.strftime("%d/%m/%Y %I:%M:%S %p")
 
+
+def table_html(df):
+    if df.empty:
+        return "<div class='warning'>Tiada data.</div>"
+
+    return df.to_html(index=False, escape=False, classes="data-table")
+
+
+# =========================
+# HIGHLIGHT LAYOUT
+# =========================
 
 def generate_seat_map():
     seat_map = {}
@@ -235,13 +259,55 @@ def generate_highlighted_layout(group_df):
     return get_base64_image(temp_file), missing_meja
 
 
-def html_page(content, message=""):
+# =========================
+# PAGE TEMPLATE
+# =========================
+
+def build_sidebar(message=""):
+    return f"""
+    <aside class="sidebar">
+        <h2>Host Panel</h2>
+
+        {message}
+
+        <div class="side-card">
+            <h3>Host Login / Upload CSV</h3>
+
+            <form method="POST" enctype="multipart/form-data">
+                <label>Kata Laluan Host</label>
+                <input type="password" name="password" placeholder="Masukkan kata laluan">
+
+                <label>Upload CSV Baru</label>
+                <input type="file" name="csv_file" accept=".csv">
+
+                <button type="submit" name="action" value="upload_csv">
+                    Upload CSV & Reset Kehadiran
+                </button>
+            </form>
+        </div>
+
+        <div class="side-card">
+            <h3>Admin</h3>
+            <a class="side-link" href="/admin">Lihat Live Attendance</a>
+            <a class="side-link" href="/">Kembali ke Carian</a>
+        </div>
+
+        <div class="side-note">
+            Password default: <b>host123</b>
+        </div>
+    </aside>
+    """
+
+
+def html_page(content, sidebar_message=""):
     logo = get_base64_image(LOGO_UGAT)
 
     if logo:
         logo_html = f'<img src="data:image/png;base64,{logo}" class="logo">'
     else:
         logo_html = '<div class="logo-text">⚓</div>'
+
+    sidebar = build_sidebar(sidebar_message)
 
     return f"""
 <!DOCTYPE html>
@@ -251,6 +317,10 @@ def html_page(content, message=""):
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
     <style>
+        * {{
+            box-sizing: border-box;
+        }}
+
         body {{
             margin: 0;
             font-family: Arial, sans-serif;
@@ -258,10 +328,65 @@ def html_page(content, message=""):
             color: white;
         }}
 
+        .layout {{
+            display: flex;
+            min-height: 100vh;
+        }}
+
+        .sidebar {{
+            width: 300px;
+            background: #020617;
+            border-right: 1px solid #1e3a5f;
+            padding: 20px;
+            position: sticky;
+            top: 0;
+            height: 100vh;
+            overflow-y: auto;
+        }}
+
+        .sidebar h2 {{
+            color: #38bdf8;
+            margin-top: 0;
+        }}
+
+        .side-card {{
+            background: #0d1320;
+            border: 1px solid #1e3a5f;
+            padding: 16px;
+            border-radius: 16px;
+            margin-bottom: 18px;
+        }}
+
+        .side-card h3 {{
+            margin-top: 0;
+            color: white;
+        }}
+
+        .side-link {{
+            display: block;
+            color: white;
+            text-decoration: none;
+            background: #1d4ed8;
+            padding: 12px;
+            border-radius: 10px;
+            margin-top: 10px;
+            text-align: center;
+            font-weight: bold;
+        }}
+
+        .side-note {{
+            color: #94a3b8;
+            font-size: 13px;
+        }}
+
+        .main {{
+            flex: 1;
+            padding: 24px;
+        }}
+
         .container {{
             max-width: 950px;
             margin: auto;
-            padding: 20px;
         }}
 
         .header {{
@@ -304,17 +429,25 @@ def html_page(content, message=""):
             margin-bottom: 22px;
         }}
 
+        label {{
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+        }}
+
         input {{
             width: 100%;
-            padding: 16px;
+            padding: 15px;
             border-radius: 12px;
             border: 1px solid #334155;
             background: #111827;
             color: white;
-            font-size: 17px;
-            box-sizing: border-box;
-            margin-top: 8px;
+            font-size: 16px;
             margin-bottom: 14px;
+        }}
+
+        input[type="file"] {{
+            padding: 12px;
         }}
 
         button {{
@@ -379,6 +512,10 @@ def html_page(content, message=""):
             background: #0f172a;
         }}
 
+        .table-wrap {{
+            overflow-x: auto;
+        }}
+
         .layout-img {{
             width: 100%;
             border-radius: 14px;
@@ -386,20 +523,21 @@ def html_page(content, message=""):
             margin-top: 12px;
         }}
 
-        .small {{
-            color: #94a3b8;
-            font-size: 14px;
-        }}
+        @media (max-width: 850px) {{
+            .layout {{
+                display: block;
+            }}
 
-        .host {{
-            margin-top: 10px;
-            border-top: 1px solid #334155;
-            padding-top: 18px;
-        }}
+            .sidebar {{
+                width: 100%;
+                height: auto;
+                position: relative;
+                border-right: none;
+                border-bottom: 1px solid #1e3a5f;
+            }}
 
-        @media (max-width: 640px) {{
-            .container {{
-                padding: 12px;
+            .main {{
+                padding: 14px;
             }}
 
             h1 {{
@@ -411,8 +549,8 @@ def html_page(content, message=""):
             }}
 
             .logo {{
-                width: 52px;
-                height: 52px;
+                width: 55px;
+                height: 55px;
             }}
 
             table {{
@@ -423,33 +561,77 @@ def html_page(content, message=""):
 </head>
 
 <body>
-    <div class="container">
-        <div class="header">
-            {logo_html}
-            <div>
-                <h1>Sistem Kehadiran Majlis Makan Malam Regimental KPA (GAJI)</h1>
-                <div class="small">Kementerian Pertahanan</div>
+    <div class="layout">
+        {sidebar}
+
+        <main class="main">
+            <div class="container">
+                <div class="header">
+                    {logo_html}
+                    <div>
+                        <h1>Sistem Kehadiran Majlis Makan Malam Regimental KPA (GAJI)</h1>
+                    </div>
+                </div>
+
+                {content}
             </div>
-        </div>
-
-        {message}
-
-        {content}
+        </main>
     </div>
 </body>
 </html>
 """
 
 
-def table_html(df):
-    if df.empty:
-        return "<div class='warning'>Tiada data.</div>"
-
-    return df.to_html(index=False, escape=False)
-
+# =========================
+# ROUTES
+# =========================
 
 @app.route("/", methods=["GET", "POST"])
 def home():
+    sidebar_message = ""
+    result_content = ""
+    search_no = ""
+
+    action = request.form.get("action", "")
+
+    if request.method == "POST" and action == "upload_csv":
+        password = request.form.get("password", "").strip()
+        uploaded_file = request.files.get("csv_file")
+
+        if password != HOST_PASSWORD:
+            sidebar_message = "<div class='warning'>Kata laluan host salah.</div>"
+
+        elif not uploaded_file or uploaded_file.filename == "":
+            sidebar_message = "<div class='warning'>Sila pilih fail CSV.</div>"
+
+        else:
+            try:
+                df_raw = pd.read_csv(uploaded_file, encoding="utf-8")
+                new_df = clean_csv(df_raw)
+
+                missing_cols = [col for col in REQUIRED_COLS if col not in new_df.columns]
+
+                if missing_cols:
+                    sidebar_message = f"""
+                    <div class='warning'>
+                        CSV baru tidak lengkap.<br>
+                        Kolum tiada: {missing_cols}
+                    </div>
+                    """
+                else:
+                    new_df.to_csv(DATA_FILE, index=False, encoding="utf-8")
+                    reset_attendance()
+
+                    sidebar_message = """
+                    <div class='success'>
+                        CSV baru berjaya dimuat naik.<br>
+                        Rekod kehadiran telah direset.
+                    </div>
+                    """
+
+            except Exception as e:
+                sidebar_message = f"<div class='warning'>Fail tidak dapat dibaca: {e}</div>"
+
     df = load_data()
     attendance_df = load_attendance()
 
@@ -460,7 +642,7 @@ def home():
             Pastikan file ini wujud: <b>{DATA_FILE}</b>
         </div>
         """
-        return html_page(content)
+        return html_page(content, sidebar_message)
 
     missing_cols = [col for col in REQUIRED_COLS if col not in df.columns]
 
@@ -470,16 +652,10 @@ def home():
             Kolum berikut tiada dalam CSV: <b>{missing_cols}</b>
         </div>
         """
-        return html_page(content)
+        return html_page(content, sidebar_message)
 
-    search_no = ""
-    password = ""
-    result_content = ""
-
-    if request.method == "POST":
+    if request.method == "POST" and action in ["search", "submit"]:
         search_no = request.form.get("search_no", "").strip()
-        password = request.form.get("password", "").strip()
-        action = request.form.get("action", "")
 
         result_df = df[
             df["NOTEN"].astype(str).str.contains(search_no, case=False, na=False)
@@ -498,14 +674,21 @@ def home():
                 hadir_noten = attendance_df["NOTEN"].astype(str).str.strip().tolist()
 
             sudah_hadir_semua = True
+
             for _, row in group_df.iterrows():
                 noten = str(row["NOTEN"]).strip()
                 if noten not in hadir_noten:
                     sudah_hadir_semua = False
 
-            message_status = "<div class='success'>✅ TELAH HADIR</div>" if sudah_hadir_semua else "<div class='warning'>❌ BELUM HADIR</div>"
+            message_status = (
+                "<div class='success'>✅ TELAH HADIR</div>"
+                if sudah_hadir_semua
+                else "<div class='warning'>❌ BELUM HADIR</div>"
+            )
 
             if action == "submit":
+                password = request.form.get("password", "").strip()
+
                 if password != HOST_PASSWORD:
                     message_status = "<div class='warning'>Kata laluan host salah. Kehadiran tidak direkodkan.</div>"
                 else:
@@ -539,12 +722,12 @@ def home():
                         message_status = "<div class='info'>Semua dalam BIL ini telah ditandakan hadir.</div>"
 
             display_cols = ["BIL", "NOTEN", "NAMA", "MENU", "MEJA"]
+
             if "CATATAN" in group_df.columns:
                 display_cols.append("CATATAN")
 
             layout_base64, missing_meja = generate_highlighted_layout(group_df)
 
-            layout_html = ""
             if layout_base64:
                 layout_html = f"""
                 <h2>Pelan Kedudukan Dewan</h2>
@@ -552,7 +735,9 @@ def home():
                 """
             else:
                 layout_html = f"""
-                <div class="warning">Fail gambar layout tidak dijumpai: <b>{CENTER_IMAGE}</b></div>
+                <div class="warning">
+                    Fail gambar layout tidak dijumpai: <b>{CENTER_IMAGE}</b>
+                </div>
                 """
 
             missing_html = ""
@@ -568,7 +753,9 @@ def home():
                 <div class="success">Rekod dijumpai. BIL: {bil_value}</div>
 
                 <h2>Maklumat Kehadiran</h2>
-                {table_html(group_df[display_cols])}
+                <div class="table-wrap">
+                    {table_html(group_df[display_cols])}
+                </div>
 
                 {layout_html}
                 {missing_html}
@@ -577,7 +764,7 @@ def home():
 
                 {message_status}
 
-                <form method="POST" class="host">
+                <form method="POST">
                     <input type="hidden" name="search_no" value="{search_no}">
                     <label>Kata Laluan Host</label>
                     <input type="password" name="password" placeholder="Masukkan password host">
@@ -602,7 +789,7 @@ def home():
     {result_content}
     """
 
-    return html_page(content)
+    return html_page(content, sidebar_message)
 
 
 @app.route("/admin")
@@ -627,22 +814,27 @@ def admin():
     total_belum = len(belum_hadir_df)
 
     belum_cols = ["BIL", "NOTEN", "NAMA", "MENU", "MEJA"]
+
     if not belum_hadir_df.empty and "CATATAN" in belum_hadir_df.columns:
         belum_cols.append("CATATAN")
 
     content = f"""
     <div class="card">
-        <h2>Live Attendance / Kehadiran Semasa</h2>
+        <h2>📋 Live Attendance / Kehadiran Semasa</h2>
 
         <div class="info">Jumlah Keseluruhan: {total_semua}</div>
         <div class="success">Jumlah Telah Hadir: {total_hadir}</div>
         <div class="warning">Jumlah Belum Hadir: {total_belum}</div>
 
         <h2>✅ Telah Hadir</h2>
-        {table_html(attendance_df)}
+        <div class="table-wrap">
+            {table_html(attendance_df)}
+        </div>
 
         <h2>❌ Belum Hadir</h2>
-        {table_html(belum_hadir_df[belum_cols]) if not belum_hadir_df.empty else "<div class='success'>Semua telah hadir.</div>"}
+        <div class="table-wrap">
+            {table_html(belum_hadir_df[belum_cols]) if not belum_hadir_df.empty else "<div class='success'>Semua telah hadir.</div>"}
+        </div>
     </div>
     """
 
