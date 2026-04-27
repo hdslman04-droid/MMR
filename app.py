@@ -428,7 +428,7 @@ def html_page(content, message=""):
             {logo_html}
             <div>
                 <h1>Sistem Kehadiran Majlis Makan Malam Regimental KPA (GAJI)</h1>
-                <div class="small">Tentera Laut Diraja Malaysia</div>
+                <div class="small">Kementerian Pertahanan</div>
             </div>
         </div>
 
