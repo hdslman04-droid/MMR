@@ -4,10 +4,11 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pandas as pd
-from flask import Flask, request
+from flask import Flask, request, session
 from PIL import Image, ImageDraw
 
 app = Flask(__name__)
+app.secret_key = "mmrugat-secret-key"
 
 DATA_FILE = "SEATING PLAN MMR PENGHARGAAN 2026 2.csv"
 ATTENDANCE_FILE = "attendance_records.csv"
@@ -16,7 +17,6 @@ LOGO_UGAT = "Logo-UGAT.png"
 CENTER_IMAGE = "LAYOUT SUSUNAN.png"
 
 HOST_PASSWORD = "host123"
-
 REQUIRED_COLS = ["BIL", "NOTEN", "NAMA", "MENU", "MEJA"]
 
 
@@ -46,7 +46,6 @@ def clean_csv(df_raw):
     df = df.loc[:, df.columns.notna()]
     df = df.loc[:, [str(col).strip() != "" for col in df.columns]]
     df = df.loc[:, ~df.columns.astype(str).str.upper().str.startswith("UNNAMED")]
-
     df = df.dropna(how="all").reset_index(drop=True)
     df.columns = [str(col).strip().upper() for col in df.columns]
 
@@ -251,43 +250,142 @@ def generate_highlighted_layout(group_df):
     return get_base64_image(temp_file), missing_meja
 
 
-def build_sidebar(message=""):
+def submit_attendance_for_search(search_no):
+    df = load_data()
+    attendance_df = load_attendance()
+
+    result_df = df[
+        df["NOTEN"].astype(str).str.contains(search_no, case=False, na=False)
+    ].copy()
+
+    if result_df.empty:
+        return "<div class='warning'>Tiada rekod dijumpai untuk nombor tentera tersebut.</div>"
+
+    bil_value = str(result_df.iloc[0]["BIL"]).strip()
+    group_df = df[df["BIL"].astype(str).str.strip() == bil_value].copy()
+
+    hadir_noten = []
+
+    if not attendance_df.empty and "NOTEN" in attendance_df.columns:
+        hadir_noten = attendance_df["NOTEN"].astype(str).str.strip().tolist()
+
+    new_records = []
+
+    for _, row in group_df.iterrows():
+        noten = str(row["NOTEN"]).strip()
+
+        if noten not in hadir_noten:
+            new_records.append({
+                "BIL": row["BIL"],
+                "NOTEN": row["NOTEN"],
+                "NAMA": row["NAMA"],
+                "MENU": row["MENU"],
+                "MEJA": row["MEJA"],
+                "STATUS_KEHADIRAN": "HADIR",
+                "TARIKH_MASA": datetime.now(
+                    ZoneInfo("Asia/Kuala_Lumpur")
+                ).strftime("%Y-%m-%d %H:%M:%S")
+            })
+
+    if new_records:
+        attendance_df = pd.concat(
+            [attendance_df, pd.DataFrame(new_records)],
+            ignore_index=True
+        )
+        save_attendance(attendance_df)
+        return "<div class='success'>Kehadiran berjaya direkodkan.</div>"
+
+    return "<div class='info'>Semua dalam BIL ini telah ditandakan hadir.</div>"
+
+
+def build_sidebar(message="", search_no=""):
+    host_logged_in = session.get("host_logged_in", False)
+
+    if not host_logged_in:
+        return f"""
+        <aside class="sidebar">
+            <h2>Host Panel</h2>
+
+            {message}
+
+            <div class="side-card">
+                <h3>Host Login</h3>
+
+                <form method="POST">
+                    <label>Kata Laluan Host</label>
+                    <input type="password" name="password" placeholder="Masukkan kata laluan">
+                    <button type="submit" name="action" value="host_login">
+                        Login Host
+                    </button>
+                </form>
+            </div>
+        </aside>
+        """
+
+    submit_html = ""
+
+    if search_no:
+        submit_html = f"""
+        <div class="side-card">
+            <h3>Submit Kehadiran</h3>
+            <p class="side-note">No Tentera dicari: <b>{search_no}</b></p>
+
+            <form method="POST">
+                <input type="hidden" name="search_no" value="{search_no}">
+                <button type="submit" name="action" value="submit">
+                    Submit / Tandakan Kehadiran
+                </button>
+            </form>
+        </div>
+        """
+    else:
+        submit_html = """
+        <div class="side-card">
+            <h3>Submit Kehadiran</h3>
+            <p class="side-note">Cari No Tentera dahulu untuk submit kehadiran.</p>
+        </div>
+        """
+
     return f"""
-    <aside class="sidebar" id="sidebar">
+    <aside class="sidebar">
         <h2>Host Panel</h2>
 
         {message}
 
         <div class="side-card">
-            <h3>Host Login / Upload CSV</h3>
+            <h3>Status Host</h3>
+            <div class="success">Anda login sebagai host.</div>
+
+            <form method="POST">
+                <button type="submit" name="action" value="host_logout">
+                    Logout Host
+                </button>
+            </form>
+        </div>
+
+        <div class="side-card">
+            <h3>Upload CSV Baru</h3>
 
             <form method="POST" enctype="multipart/form-data">
-                <label>Kata Laluan Host</label>
-                <input type="password" name="password" placeholder="Masukkan kata laluan">
-
-                <label>Upload CSV Baru</label>
                 <input type="file" name="csv_file" accept=".csv">
-
                 <button type="submit" name="action" value="upload_csv">
                     Upload CSV & Reset Kehadiran
                 </button>
             </form>
         </div>
 
+        {submit_html}
+
         <div class="side-card">
             <h3>Admin</h3>
             <a class="side-link" href="/admin">Lihat Live Attendance</a>
             <a class="side-link" href="/">Kembali ke Carian</a>
         </div>
-
-        <div class="side-note">
-            Password default: <b>host123</b>
-        </div>
     </aside>
     """
 
 
-def html_page(content, sidebar_message=""):
+def html_page(content, sidebar_message="", search_no=""):
     logo = get_base64_image(LOGO_UGAT)
 
     if logo:
@@ -295,7 +393,7 @@ def html_page(content, sidebar_message=""):
     else:
         logo_html = '<div class="logo-text">⚓</div>'
 
-    sidebar = build_sidebar(sidebar_message)
+    sidebar = build_sidebar(sidebar_message, search_no)
 
     return f"""
 <!DOCTYPE html>
@@ -613,43 +711,65 @@ def home():
 
     action = request.form.get("action", "")
 
-    if request.method == "POST" and action == "upload_csv":
-        password = request.form.get("password", "").strip()
-        uploaded_file = request.files.get("csv_file")
+    if request.method == "POST":
+        if action == "host_login":
+            password = request.form.get("password", "").strip()
 
-        if password != HOST_PASSWORD:
-            sidebar_message = "<div class='warning'>Kata laluan host salah.</div>"
+            if password == HOST_PASSWORD:
+                session["host_logged_in"] = True
+                sidebar_message = "<div class='success'>Login host berjaya.</div>"
+            else:
+                sidebar_message = "<div class='warning'>Kata laluan host salah.</div>"
 
-        elif not uploaded_file or uploaded_file.filename == "":
-            sidebar_message = "<div class='warning'>Sila pilih fail CSV.</div>"
+        elif action == "host_logout":
+            session["host_logged_in"] = False
+            sidebar_message = "<div class='info'>Host telah logout.</div>"
 
-        else:
-            try:
-                df_raw = pd.read_csv(uploaded_file, encoding="utf-8")
-                new_df = clean_csv(df_raw)
+        elif action == "upload_csv":
+            if not session.get("host_logged_in", False):
+                sidebar_message = "<div class='warning'>Sila login host dahulu.</div>"
+            else:
+                uploaded_file = request.files.get("csv_file")
 
-                missing_cols = [col for col in REQUIRED_COLS if col not in new_df.columns]
-
-                if missing_cols:
-                    sidebar_message = f"""
-                    <div class='warning'>
-                        CSV baru tidak lengkap.<br>
-                        Kolum tiada: {missing_cols}
-                    </div>
-                    """
+                if not uploaded_file or uploaded_file.filename == "":
+                    sidebar_message = "<div class='warning'>Sila pilih fail CSV.</div>"
                 else:
-                    new_df.to_csv(DATA_FILE, index=False, encoding="utf-8")
-                    reset_attendance()
+                    try:
+                        df_raw = pd.read_csv(uploaded_file, encoding="utf-8")
+                        new_df = clean_csv(df_raw)
 
-                    sidebar_message = """
-                    <div class='success'>
-                        CSV baru berjaya dimuat naik.<br>
-                        Rekod kehadiran telah direset.
-                    </div>
-                    """
+                        missing_cols = [col for col in REQUIRED_COLS if col not in new_df.columns]
 
-            except Exception as e:
-                sidebar_message = f"<div class='warning'>Fail tidak dapat dibaca: {e}</div>"
+                        if missing_cols:
+                            sidebar_message = f"""
+                            <div class='warning'>
+                                CSV baru tidak lengkap.<br>
+                                Kolum tiada: {missing_cols}
+                            </div>
+                            """
+                        else:
+                            new_df.to_csv(DATA_FILE, index=False, encoding="utf-8")
+                            reset_attendance()
+
+                            sidebar_message = """
+                            <div class='success'>
+                                CSV baru berjaya dimuat naik.<br>
+                                Rekod kehadiran telah direset.
+                            </div>
+                            """
+
+                    except Exception as e:
+                        sidebar_message = f"<div class='warning'>Fail tidak dapat dibaca: {e}</div>"
+
+        elif action == "submit":
+            search_no = request.form.get("search_no", "").strip()
+
+            if not session.get("host_logged_in", False):
+                sidebar_message = "<div class='warning'>Sila login host dahulu.</div>"
+            elif not search_no:
+                sidebar_message = "<div class='warning'>Cari No Tentera dahulu.</div>"
+            else:
+                sidebar_message = submit_attendance_for_search(search_no)
 
     df = load_data()
     attendance_df = load_attendance()
@@ -661,7 +781,7 @@ def home():
             Pastikan file ini wujud: <b>{DATA_FILE}</b>
         </div>
         """
-        return html_page(content, sidebar_message)
+        return html_page(content, sidebar_message, search_no)
 
     missing_cols = [col for col in REQUIRED_COLS if col not in df.columns]
 
@@ -671,10 +791,11 @@ def home():
             Kolum berikut tiada dalam CSV: <b>{missing_cols}</b>
         </div>
         """
-        return html_page(content, sidebar_message)
+        return html_page(content, sidebar_message, search_no)
 
     if request.method == "POST" and action in ["search", "submit"]:
-        search_no = request.form.get("search_no", "").strip()
+        if not search_no:
+            search_no = request.form.get("search_no", "").strip()
 
         result_df = df[
             df["NOTEN"].astype(str).str.contains(search_no, case=False, na=False)
@@ -687,6 +808,8 @@ def home():
         else:
             bil_value = str(result_df.iloc[0]["BIL"]).strip()
             group_df = df[df["BIL"].astype(str).str.strip() == bil_value].copy()
+
+            attendance_df = load_attendance()
 
             hadir_noten = []
             if not attendance_df.empty and "NOTEN" in attendance_df.columns:
@@ -704,41 +827,6 @@ def home():
                 if sudah_hadir_semua
                 else "<div class='warning'>❌ BELUM HADIR</div>"
             )
-
-            if action == "submit":
-                password = request.form.get("password", "").strip()
-
-                if password != HOST_PASSWORD:
-                    message_status = "<div class='warning'>Kata laluan host salah. Kehadiran tidak direkodkan.</div>"
-                else:
-                    new_records = []
-
-                    for _, row in group_df.iterrows():
-                        noten = str(row["NOTEN"]).strip()
-                        already_exists = noten in hadir_noten
-
-                        if not already_exists:
-                            new_records.append({
-                                "BIL": row["BIL"],
-                                "NOTEN": row["NOTEN"],
-                                "NAMA": row["NAMA"],
-                                "MENU": row["MENU"],
-                                "MEJA": row["MEJA"],
-                                "STATUS_KEHADIRAN": "HADIR",
-                                "TARIKH_MASA": datetime.now(
-                                    ZoneInfo("Asia/Kuala_Lumpur")
-                                ).strftime("%Y-%m-%d %H:%M:%S")
-                            })
-
-                    if new_records:
-                        attendance_df = pd.concat(
-                            [attendance_df, pd.DataFrame(new_records)],
-                            ignore_index=True
-                        )
-                        save_attendance(attendance_df)
-                        message_status = "<div class='success'>Kehadiran berjaya direkodkan.</div>"
-                    else:
-                        message_status = "<div class='info'>Semua dalam BIL ini telah ditandakan hadir.</div>"
 
             display_cols = ["BIL", "NOTEN", "NAMA", "MENU", "MEJA"]
 
@@ -782,15 +870,6 @@ def home():
                 <div class="info">Last Updated: {get_updated_time()}</div>
 
                 {message_status}
-
-                <form method="POST">
-                    <input type="hidden" name="search_no" value="{search_no}">
-                    <label>Kata Laluan Host</label>
-                    <input type="password" name="password" placeholder="Masukkan password host">
-                    <button type="submit" name="action" value="submit">
-                        Submit / Tandakan Kehadiran Kumpulan Ini
-                    </button>
-                </form>
             </div>
             """
 
@@ -808,7 +887,7 @@ def home():
     {result_content}
     """
 
-    return html_page(content, sidebar_message)
+    return html_page(content, sidebar_message, search_no)
 
 
 @app.route("/admin")
