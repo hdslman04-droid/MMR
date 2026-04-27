@@ -4,7 +4,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pandas as pd
-from flask import Flask, request, redirect, url_for
+from flask import Flask, request
 from PIL import Image, ImageDraw
 
 app = Flask(__name__)
@@ -19,10 +19,6 @@ HOST_PASSWORD = "host123"
 
 REQUIRED_COLS = ["BIL", "NOTEN", "NAMA", "MENU", "MEJA"]
 
-
-# =========================
-# BASIC FUNCTIONS
-# =========================
 
 def clean_csv(df_raw):
     df_raw = df_raw.dropna(how="all").reset_index(drop=True)
@@ -142,10 +138,6 @@ def table_html(df):
     return df.to_html(index=False, escape=False, classes="data-table")
 
 
-# =========================
-# HIGHLIGHT LAYOUT
-# =========================
-
 def generate_seat_map():
     seat_map = {}
 
@@ -259,13 +251,9 @@ def generate_highlighted_layout(group_df):
     return get_base64_image(temp_file), missing_meja
 
 
-# =========================
-# PAGE TEMPLATE
-# =========================
-
 def build_sidebar(message=""):
     return f"""
-    <aside class="sidebar">
+    <aside class="sidebar" id="sidebar">
         <h2>Host Panel</h2>
 
         {message}
@@ -328,6 +316,22 @@ def html_page(content, sidebar_message=""):
             color: white;
         }}
 
+        .menu-btn {{
+            position: fixed;
+            top: 16px;
+            left: 16px;
+            z-index: 10000;
+            background: #2563eb;
+            color: white;
+            border: none;
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            font-size: 24px;
+            cursor: pointer;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+        }}
+
         .layout {{
             display: flex;
             min-height: 100vh;
@@ -337,11 +341,29 @@ def html_page(content, sidebar_message=""):
             width: 300px;
             background: #020617;
             border-right: 1px solid #1e3a5f;
-            padding: 20px;
-            position: sticky;
+            padding: 80px 20px 20px 20px;
+            position: fixed;
             top: 0;
+            left: 0;
             height: 100vh;
             overflow-y: auto;
+            transition: transform 0.3s ease;
+            z-index: 9999;
+        }}
+
+        .layout.sidebar-closed .sidebar {{
+            transform: translateX(-100%);
+        }}
+
+        .main {{
+            flex: 1;
+            padding: 24px;
+            margin-left: 300px;
+            transition: margin-left 0.3s ease;
+        }}
+
+        .layout.sidebar-closed .main {{
+            margin-left: 0;
         }}
 
         .sidebar h2 {{
@@ -377,11 +399,6 @@ def html_page(content, sidebar_message=""):
         .side-note {{
             color: #94a3b8;
             font-size: 13px;
-        }}
-
-        .main {{
-            flex: 1;
-            padding: 24px;
         }}
 
         .container {{
@@ -524,20 +541,18 @@ def html_page(content, sidebar_message=""):
         }}
 
         @media (max-width: 850px) {{
-            .layout {{
-                display: block;
-            }}
-
             .sidebar {{
-                width: 100%;
-                height: auto;
-                position: relative;
-                border-right: none;
-                border-bottom: 1px solid #1e3a5f;
+                width: 320px;
+                max-width: 88vw;
             }}
 
             .main {{
-                padding: 14px;
+                margin-left: 0;
+                padding: 80px 14px 14px 14px;
+            }}
+
+            .layout:not(.sidebar-closed) .main {{
+                filter: brightness(0.7);
             }}
 
             h1 {{
@@ -561,7 +576,9 @@ def html_page(content, sidebar_message=""):
 </head>
 
 <body>
-    <div class="layout">
+    <button class="menu-btn" onclick="toggleSidebar()">☰</button>
+
+    <div class="layout sidebar-closed" id="layout">
         {sidebar}
 
         <main class="main">
@@ -577,14 +594,16 @@ def html_page(content, sidebar_message=""):
             </div>
         </main>
     </div>
+
+    <script>
+        function toggleSidebar() {{
+            document.getElementById("layout").classList.toggle("sidebar-closed");
+        }}
+    </script>
 </body>
 </html>
 """
 
-
-# =========================
-# ROUTES
-# =========================
 
 @app.route("/", methods=["GET", "POST"])
 def home():
