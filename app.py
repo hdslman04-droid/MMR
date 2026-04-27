@@ -1,63 +1,13 @@
-import pandas as pd
-import streamlit as st
-from pathlib import Path
-from datetime import datetime
-from zoneinfo import ZoneInfo
 import base64
+from datetime import datetime
+from pathlib import Path
+from zoneinfo import ZoneInfo
+
+import pandas as pd
+from flask import Flask, request, redirect, url_for
 from PIL import Image, ImageDraw
 
-st.set_page_config(
-    page_title="MMR KPA (GAJI)",
-    page_icon="TDM.png",
-    layout="centered",
-    initial_sidebar_state="expanded"
-)
-
-if "host_logged_in" not in st.session_state:
-    st.session_state.host_logged_in = False
-
-st.markdown("""
-<style>
-.block-container {
-    padding-top: 1rem;
-    padding-bottom: 2rem;
-    padding-left: 1rem;
-    padding-right: 1rem;
-    max-width: 900px;
-}
-
-.time-box {
-    text-align: center;
-    font-size: 16px;
-    font-weight: 600;
-    padding: 10px;
-    border-radius: 10px;
-    background-color: #f3f4f6;
-    margin-top: 14px;
-    margin-bottom: 18px;
-    color: black;
-}
-
-.center-caption {
-    text-align: center;
-    margin-bottom: 20px;
-    color: #555;
-}
-
-div[data-testid="stTextInput"] {
-    max-width: 420px;
-}
-
-@media (max-width: 640px) {
-    .block-container {
-        padding-top: 0.5rem;
-        padding-left: 0.7rem;
-        padding-right: 0.7rem;
-    }
-}
-</style>
-""", unsafe_allow_html=True)
-
+app = Flask(__name__)
 
 DATA_FILE = "SEATING PLAN MMR PENGHARGAAN 2026 2.csv"
 ATTENDANCE_FILE = "attendance_records.csv"
@@ -65,150 +15,74 @@ ATTENDANCE_FILE = "attendance_records.csv"
 LOGO_UGAT = "Logo-UGAT.png"
 CENTER_IMAGE = "LAYOUT SUSUNAN.png"
 
-DEFAULT_HOST_PASSWORD = "host123"
+HOST_PASSWORD = "host123"
 
-required_cols = ["BIL", "NOTEN", "NAMA", "MENU", "MEJA"]
-
-
-# =========================================================
-# BASIC FUNCTIONS
-# =========================================================
-def get_file_mtime(file_path):
-    path = Path(file_path)
-
-    if path.exists():
-        return path.stat().st_mtime
-
-    return 0
-
-
-def get_file_updated_time():
-    files_to_check = [DATA_FILE, ATTENDANCE_FILE]
-    existing_files = [Path(f) for f in files_to_check if Path(f).exists()]
-
-    if not existing_files:
-        return "Tiada rekod"
-
-    latest_file = max(existing_files, key=lambda x: x.stat().st_mtime)
-    latest_time = datetime.fromtimestamp(
-        latest_file.stat().st_mtime,
-        ZoneInfo("Asia/Kuala_Lumpur")
-    )
-
-    return latest_time.strftime("%d/%m/%Y %I:%M:%S %p")
+REQUIRED_COLS = ["BIL", "NOTEN", "NAMA", "MENU", "MEJA"]
 
 
 def clean_csv(df_raw):
     df_raw = df_raw.dropna(how="all").reset_index(drop=True)
-
-    # Bersihkan column sedia ada
     df_raw.columns = [str(col).strip().upper() for col in df_raw.columns]
 
-    # Jika CSV memang sudah ada header yang betul
-    if all(col in df_raw.columns for col in required_cols):
+    if all(col in df_raw.columns for col in REQUIRED_COLS):
         df = df_raw.copy()
-
     else:
         header_row_index = None
 
-        # Cari row sebenar yang mengandungi BIL, NOTEN, NAMA, MENU, MEJA
         for i in range(len(df_raw)):
-            row_values = [
-                str(value).strip().upper()
-                for value in df_raw.iloc[i].tolist()
-            ]
-
-            if (
-                "BIL" in row_values
-                and "NOTEN" in row_values
-                and "NAMA" in row_values
-                and "MENU" in row_values
-                and "MEJA" in row_values
-            ):
+            row_values = [str(v).strip().upper() for v in df_raw.iloc[i].tolist()]
+            if all(col in row_values for col in REQUIRED_COLS):
                 header_row_index = i
                 break
 
         if header_row_index is None:
-            st.error(
-                "Header CSV tidak dijumpai. Pastikan fail CSV ada kolum "
-                "BIL, NOTEN, NAMA, MENU dan MEJA."
-            )
-            st.stop()
+            return pd.DataFrame()
 
-        headers = [
-            str(value).strip().upper()
-            for value in df_raw.iloc[header_row_index].tolist()
-        ]
-
+        headers = [str(v).strip().upper() for v in df_raw.iloc[header_row_index].tolist()]
         df = df_raw.iloc[header_row_index + 1:].copy()
         df.columns = headers
 
-    # Buang column kosong / unnamed
     df = df.loc[:, df.columns.notna()]
     df = df.loc[:, [str(col).strip() != "" for col in df.columns]]
     df = df.loc[:, ~df.columns.astype(str).str.upper().str.startswith("UNNAMED")]
-
-    # Bersihkan data
     df = df.dropna(how="all").reset_index(drop=True)
     df.columns = [str(col).strip().upper() for col in df.columns]
 
     for col in df.columns:
         df[col] = df[col].fillna("").astype(str).str.strip()
 
-    # Buang .0 jika Excel convert nombor kepada decimal
-    if "BIL" in df.columns:
-        df["BIL"] = df["BIL"].str.replace(".0", "", regex=False)
-
-    if "NOTEN" in df.columns:
-        df["NOTEN"] = df["NOTEN"].str.replace(".0", "", regex=False)
+    for col in ["BIL", "NOTEN", "MEJA"]:
+        if col in df.columns:
+            df[col] = df[col].str.replace(".0", "", regex=False)
 
     if "MEJA" in df.columns:
-        df["MEJA"] = df["MEJA"].str.upper().str.replace(".0", "", regex=False)
+        df["MEJA"] = df["MEJA"].str.upper()
 
     return df
 
 
-@st.cache_data
-def load_default_data(file_mtime):
-    file_path = Path(DATA_FILE)
+def load_data():
+    if not Path(DATA_FILE).exists():
+        return pd.DataFrame()
 
-    if not file_path.exists():
-        st.error(f"Fail '{DATA_FILE}' tidak dijumpai.")
-        st.stop()
-
-    df_raw = pd.read_csv(file_path, encoding="utf-8")
+    df_raw = pd.read_csv(DATA_FILE, encoding="utf-8")
     return clean_csv(df_raw)
 
 
-def load_uploaded_files(uploaded_files):
-    all_data = []
-
-    for uploaded_file in uploaded_files:
-        df_raw = pd.read_csv(uploaded_file, encoding="utf-8")
-        df = clean_csv(df_raw)
-        all_data.append(df)
-
-    if not all_data:
-        return pd.DataFrame()
-
-    return pd.concat(all_data, ignore_index=True)
-
-
 def load_attendance():
-    file_path = Path(ATTENDANCE_FILE)
-
-    if file_path.exists():
+    if Path(ATTENDANCE_FILE).exists():
         try:
-            attendance_df = pd.read_csv(file_path)
-            attendance_df.columns = [str(col).strip().upper() for col in attendance_df.columns]
+            df = pd.read_csv(ATTENDANCE_FILE)
+            df.columns = [str(col).strip().upper() for col in df.columns]
 
-            for col in attendance_df.columns:
-                attendance_df[col] = attendance_df[col].fillna("").astype(str).str.strip()
+            for col in df.columns:
+                df[col] = df[col].fillna("").astype(str).str.strip()
 
-            if "NOTEN" in attendance_df.columns:
-                attendance_df["NOTEN"] = attendance_df["NOTEN"].str.replace(".0", "", regex=False)
+            if "NOTEN" in df.columns:
+                df["NOTEN"] = df["NOTEN"].str.replace(".0", "", regex=False)
 
-            return attendance_df
+            return df
+
         except Exception:
             pass
 
@@ -222,31 +96,6 @@ def save_attendance(attendance_df):
     attendance_df.to_csv(ATTENDANCE_FILE, index=False, encoding="utf-8")
 
 
-def reset_attendance():
-    reset_attendance_df = pd.DataFrame(columns=[
-        "BIL", "NOTEN", "NAMA", "MENU", "MEJA",
-        "STATUS_KEHADIRAN", "TARIKH_MASA"
-    ])
-
-    reset_attendance_df.to_csv(ATTENDANCE_FILE, index=False, encoding="utf-8")
-
-
-def show_image_if_exists(image_path, width=None, use_container_width=False):
-    path = Path(image_path)
-
-    if path.exists():
-        st.image(str(path), width=width, use_container_width=use_container_width)
-
-
-def verify_host_password(password_input):
-    try:
-        real_password = st.secrets["HOST_PASSWORD"]
-    except Exception:
-        real_password = DEFAULT_HOST_PASSWORD
-
-    return password_input == real_password
-
-
 def get_base64_image(image_path):
     path = Path(image_path)
 
@@ -257,9 +106,22 @@ def get_base64_image(image_path):
         return base64.b64encode(f.read()).decode()
 
 
-# =========================================================
-# HIGHLIGHT MEJA DALAM LAYOUT
-# =========================================================
+def get_updated_time():
+    files = [Path(DATA_FILE), Path(ATTENDANCE_FILE)]
+    files = [f for f in files if f.exists()]
+
+    if not files:
+        return "Tiada rekod"
+
+    latest = max(files, key=lambda x: x.stat().st_mtime)
+    latest_time = datetime.fromtimestamp(
+        latest.stat().st_mtime,
+        ZoneInfo("Asia/Kuala_Lumpur")
+    )
+
+    return latest_time.strftime("%d/%m/%Y %I:%M:%S %p")
+
+
 def generate_seat_map():
     seat_map = {}
 
@@ -325,12 +187,11 @@ def generate_seat_map():
     return seat_map
 
 
-def show_highlighted_layout(image_path, group_df):
-    path = Path(image_path)
+def generate_highlighted_layout(group_df):
+    path = Path(CENTER_IMAGE)
 
     if not path.exists():
-        st.warning(f"Fail gambar '{image_path}' tidak dijumpai.")
-        return
+        return "", []
 
     image = Image.open(path).convert("RGBA")
     overlay = Image.new("RGBA", image.size, (255, 255, 255, 0))
@@ -358,223 +219,301 @@ def show_highlighted_layout(image_path, group_df):
             w = info["w"]
             h = info["h"]
 
-            fill_color = (255, 0, 0, 90)
-            outline_color = (255, 0, 0, 255)
-
             draw.rectangle(
                 [x - w // 2, y - h // 2, x + w // 2, y + h // 2],
-                fill=fill_color,
-                outline=outline_color,
+                fill=(255, 0, 0, 90),
+                outline=(255, 0, 0, 255),
                 width=4
             )
         else:
             missing_meja.append(meja)
 
-    highlighted_image = Image.alpha_composite(image, overlay)
-    st.image(highlighted_image, use_container_width=True)
+    highlighted = Image.alpha_composite(image, overlay)
+    temp_file = "highlighted_layout.png"
+    highlighted.convert("RGB").save(temp_file)
 
-    if missing_meja:
-        st.warning(f"Meja ini belum ada coordinate dalam layout: {', '.join(missing_meja)}")
-
-
-# =========================================================
-# SIDEBAR HOST LOGIN + UPLOAD
-# =========================================================
-if st.session_state.host_logged_in:
-    st.sidebar.title("Host Panel")
-    st.sidebar.success("Anda login sebagai host.")
-
-    uploaded_files = st.sidebar.file_uploader(
-        "Upload CSV Files",
-        accept_multiple_files=True,
-        type=["csv"]
-    )
-
-    if uploaded_files:
-        try:
-            new_df = load_uploaded_files(uploaded_files)
-
-            missing_uploaded_cols = [
-                col for col in required_cols
-                if col not in new_df.columns
-            ]
-
-            if missing_uploaded_cols:
-                st.sidebar.error(
-                    f"CSV baru tidak lengkap. Kolum tiada: {missing_uploaded_cols}"
-                )
-            else:
-                # Simpan CSV baru sebagai data utama untuk semua user
-                new_df.to_csv(DATA_FILE, index=False, encoding="utf-8")
-
-                # Reset kehadiran bila data baru upload
-                reset_attendance()
-
-                # Clear cache supaya data lama tidak digunakan
-                st.cache_data.clear()
-
-                st.sidebar.success(
-                    "CSV baru berjaya dimuat naik. "
-                    "Data tetamu telah dikemaskini dan rekod kehadiran telah direset."
-                )
-
-                st.rerun()
-
-        except Exception as e:
-            st.sidebar.error(f"Fail tidak dapat dibaca: {e}")
-
-    if st.sidebar.button("Logout Host"):
-        st.session_state.host_logged_in = False
-        st.rerun()
-
-else:
-    st.sidebar.title("Host Login")
-
-    host_password_input = st.sidebar.text_input(
-        "Masukkan kata laluan",
-        type="password"
-    )
-
-    if st.sidebar.button("Login"):
-        if verify_host_password(host_password_input):
-            st.session_state.host_logged_in = True
-            st.sidebar.success("Login berjaya.")
-            st.rerun()
-        else:
-            st.sidebar.error("Kata laluan salah.")
+    return get_base64_image(temp_file), missing_meja
 
 
-# =========================================================
-# LOAD DATA
-# Semua user akan baca DATA_FILE utama, bukan session host
-# =========================================================
-df = load_default_data(get_file_mtime(DATA_FILE))
-attendance_df = load_attendance()
+def html_page(content, message=""):
+    logo = get_base64_image(LOGO_UGAT)
 
-missing_cols = [col for col in required_cols if col not in df.columns]
-
-if missing_cols:
-    st.error(f"Kolum berikut tiada dalam fail CSV: {missing_cols}")
-    st.stop()
-
-
-# =========================================================
-# BANNER HEADER
-# =========================================================
-img_base64 = get_base64_image(LOGO_UGAT)
-
-if img_base64:
-    st.markdown(f"""
-    <div style="
-        display:flex;
-        align-items:center;
-        gap:12px;
-        background: linear-gradient(90deg, #020617, #111827);
-        padding:15px;
-        border-radius:15px;
-        margin-bottom:15px;
-    ">
-        <img src="data:image/png;base64,{img_base64}" width="50">
-        <h2 style="margin:0; color:white;">
-            Sistem Kehadiran Majlis Makan Malam Regimental KPA (GAJI)
-        </h2>
-    </div>
-    """, unsafe_allow_html=True)
-else:
-    st.markdown("""
-    <div style="
-        display:flex;
-        align-items:center;
-        gap:12px;
-        background: linear-gradient(90deg, #020617, #111827);
-        padding:15px;
-        border-radius:15px;
-        margin-bottom:15px;
-    ">
-        <h2 style="margin:0; color:white;">
-            Sistem Kehadiran Majlis Makan Malam Regimental KPA (GAJI)
-        </h2>
-    </div>
-    """, unsafe_allow_html=True)
-
-
-# =========================================================
-# SEARCH SECTION
-# =========================================================
-st.markdown(
-    "<h3 style='color:#38bdf8;'>Carian Nombor Tentera</h3>",
-    unsafe_allow_html=True
-)
-
-search_no = st.text_input(
-    "Masukkan No Tentera",
-    max_chars=10,
-    placeholder="Contoh: 3004463"
-)
-
-if search_no:
-    search_value = search_no.strip()
-
-    result_df = df[
-        df["NOTEN"].astype(str).str.contains(search_value, case=False, na=False)
-    ].copy()
-
-    if result_df.empty:
-        st.warning("Tiada rekod dijumpai untuk nombor tentera tersebut.")
+    if logo:
+        logo_html = f'<img src="data:image/png;base64,{logo}" class="logo">'
     else:
-        bil_value = str(result_df.iloc[0]["BIL"]).strip()
-        group_df = df[df["BIL"].astype(str).str.strip() == bil_value].copy()
+        logo_html = '<div class="logo-text">⚓</div>'
 
-        st.success(f"Rekod dijumpai. BIL: {bil_value}")
+    return f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <title>MMR KPA (GAJI)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
 
-        st.markdown("### Maklumat Kehadiran")
+    <style>
+        body {{
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #070b16;
+            color: white;
+        }}
 
-        display_cols = ["BIL", "NOTEN", "NAMA", "MENU", "MEJA"]
+        .container {{
+            max-width: 950px;
+            margin: auto;
+            padding: 20px;
+        }}
 
-        if "CATATAN" in group_df.columns:
-            display_cols.append("CATATAN")
+        .header {{
+            display: flex;
+            align-items: center;
+            gap: 18px;
+            background: linear-gradient(90deg, #020617, #111827);
+            padding: 22px;
+            border-radius: 18px;
+            border: 1px solid #1e3a5f;
+            margin-bottom: 24px;
+        }}
 
-        st.table(group_df[display_cols])
+        .logo {{
+            width: 70px;
+            height: 70px;
+            object-fit: contain;
+        }}
 
-        st.markdown("### Pelan Kedudukan Dewan")
-        show_highlighted_layout(CENTER_IMAGE, group_df)
+        .logo-text {{
+            font-size: 55px;
+        }}
 
-        st.markdown(
-            f"<div class='time-box'>Last Updated: {get_file_updated_time()}</div>",
-            unsafe_allow_html=True
-        )
+        h1 {{
+            margin: 0;
+            font-size: 28px;
+            line-height: 1.25;
+        }}
 
-        sudah_hadir_semua = True
+        h2 {{
+            color: #38bdf8;
+            margin-top: 0;
+        }}
 
-        for idx, row in group_df.iterrows():
-            noten = str(row["NOTEN"]).strip()
+        .card {{
+            background: #0d1320;
+            border: 1px solid #1e3a5f;
+            padding: 22px;
+            border-radius: 18px;
+            margin-bottom: 22px;
+        }}
 
-            sudah_hadir = False
+        input {{
+            width: 100%;
+            padding: 16px;
+            border-radius: 12px;
+            border: 1px solid #334155;
+            background: #111827;
+            color: white;
+            font-size: 17px;
+            box-sizing: border-box;
+            margin-top: 8px;
+            margin-bottom: 14px;
+        }}
 
-            if not attendance_df.empty and "NOTEN" in attendance_df.columns:
-                sudah_hadir = noten in attendance_df["NOTEN"].astype(str).str.strip().values
+        button {{
+            width: 100%;
+            padding: 15px;
+            border: none;
+            border-radius: 12px;
+            background: #2563eb;
+            color: white;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+        }}
 
-            if not sudah_hadir:
-                sudah_hadir_semua = False
+        button:hover {{
+            background: #1d4ed8;
+        }}
 
-        if sudah_hadir_semua:
-            st.success("✅ TELAH HADIR")
+        .success {{
+            background: #14532d;
+            border: 1px solid #22c55e;
+            padding: 15px;
+            border-radius: 12px;
+            margin-bottom: 18px;
+        }}
+
+        .warning {{
+            background: #422006;
+            border: 1px solid #f59e0b;
+            padding: 15px;
+            border-radius: 12px;
+            margin-bottom: 18px;
+        }}
+
+        .info {{
+            background: #102a43;
+            border: 1px solid #38bdf8;
+            color: #60a5fa;
+            padding: 15px;
+            border-radius: 12px;
+            margin-bottom: 18px;
+        }}
+
+        table {{
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 12px;
+            font-size: 14px;
+        }}
+
+        th, td {{
+            padding: 10px;
+            border: 1px solid #334155;
+            text-align: left;
+        }}
+
+        th {{
+            background: #1e3a8a;
+        }}
+
+        td {{
+            background: #0f172a;
+        }}
+
+        .layout-img {{
+            width: 100%;
+            border-radius: 14px;
+            border: 1px solid #334155;
+            margin-top: 12px;
+        }}
+
+        .small {{
+            color: #94a3b8;
+            font-size: 14px;
+        }}
+
+        .host {{
+            margin-top: 10px;
+            border-top: 1px solid #334155;
+            padding-top: 18px;
+        }}
+
+        @media (max-width: 640px) {{
+            .container {{
+                padding: 12px;
+            }}
+
+            h1 {{
+                font-size: 21px;
+            }}
+
+            .header {{
+                padding: 16px;
+            }}
+
+            .logo {{
+                width: 52px;
+                height: 52px;
+            }}
+
+            table {{
+                font-size: 12px;
+            }}
+        }}
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            {logo_html}
+            <div>
+                <h1>Sistem Kehadiran Majlis Makan Malam Regimental KPA (GAJI)</h1>
+                <div class="small">Tentera Laut Diraja Malaysia</div>
+            </div>
+        </div>
+
+        {message}
+
+        {content}
+    </div>
+</body>
+</html>
+"""
+
+
+def table_html(df):
+    if df.empty:
+        return "<div class='warning'>Tiada data.</div>"
+
+    return df.to_html(index=False, escape=False)
+
+
+@app.route("/", methods=["GET", "POST"])
+def home():
+    df = load_data()
+    attendance_df = load_attendance()
+
+    if df.empty:
+        content = f"""
+        <div class="warning">
+            Fail CSV tidak dijumpai atau format CSV salah.<br>
+            Pastikan file ini wujud: <b>{DATA_FILE}</b>
+        </div>
+        """
+        return html_page(content)
+
+    missing_cols = [col for col in REQUIRED_COLS if col not in df.columns]
+
+    if missing_cols:
+        content = f"""
+        <div class="warning">
+            Kolum berikut tiada dalam CSV: <b>{missing_cols}</b>
+        </div>
+        """
+        return html_page(content)
+
+    search_no = ""
+    password = ""
+    result_content = ""
+
+    if request.method == "POST":
+        search_no = request.form.get("search_no", "").strip()
+        password = request.form.get("password", "").strip()
+        action = request.form.get("action", "")
+
+        result_df = df[
+            df["NOTEN"].astype(str).str.contains(search_no, case=False, na=False)
+        ].copy()
+
+        if result_df.empty:
+            result_content = """
+            <div class="warning">Tiada rekod dijumpai untuk nombor tentera tersebut.</div>
+            """
         else:
-            st.warning("❌ BELUM HADIR")
+            bil_value = str(result_df.iloc[0]["BIL"]).strip()
+            group_df = df[df["BIL"].astype(str).str.strip() == bil_value].copy()
 
-        if st.session_state.host_logged_in:
-            if not sudah_hadir_semua:
-                if st.button("Submit / Tandakan Kehadiran Kumpulan Ini"):
+            hadir_noten = []
+            if not attendance_df.empty and "NOTEN" in attendance_df.columns:
+                hadir_noten = attendance_df["NOTEN"].astype(str).str.strip().tolist()
 
+            sudah_hadir_semua = True
+            for _, row in group_df.iterrows():
+                noten = str(row["NOTEN"]).strip()
+                if noten not in hadir_noten:
+                    sudah_hadir_semua = False
+
+            message_status = "<div class='success'>✅ TELAH HADIR</div>" if sudah_hadir_semua else "<div class='warning'>❌ BELUM HADIR</div>"
+
+            if action == "submit":
+                if password != HOST_PASSWORD:
+                    message_status = "<div class='warning'>Kata laluan host salah. Kehadiran tidak direkodkan.</div>"
+                else:
                     new_records = []
 
-                    for idx, row in group_df.iterrows():
+                    for _, row in group_df.iterrows():
                         noten = str(row["NOTEN"]).strip()
-
-                        already_exists = False
-
-                        if not attendance_df.empty and "NOTEN" in attendance_df.columns:
-                            already_exists = noten in attendance_df["NOTEN"].astype(str).str.strip().values
+                        already_exists = noten in hadir_noten
 
                         if not already_exists:
                             new_records.append({
@@ -595,66 +534,120 @@ if search_no:
                             ignore_index=True
                         )
                         save_attendance(attendance_df)
-                        st.success("Kehadiran berjaya direkodkan.")
-                        st.rerun()
+                        message_status = "<div class='success'>Kehadiran berjaya direkodkan.</div>"
                     else:
-                        st.info("Semua dalam BIL ini telah ditandakan hadir.")
-        else:
-            st.info("Hanya host boleh tandakan kehadiran.")
+                        message_status = "<div class='info'>Semua dalam BIL ini telah ditandakan hadir.</div>"
 
-else:
-    st.info("Sila masukkan No Tentera untuk membuat carian.")
+            display_cols = ["BIL", "NOTEN", "NAMA", "MENU", "MEJA"]
+            if "CATATAN" in group_df.columns:
+                display_cols.append("CATATAN")
 
-st.markdown("---")
+            layout_base64, missing_meja = generate_highlighted_layout(group_df)
+
+            layout_html = ""
+            if layout_base64:
+                layout_html = f"""
+                <h2>Pelan Kedudukan Dewan</h2>
+                <img src="data:image/png;base64,{layout_base64}" class="layout-img">
+                """
+            else:
+                layout_html = f"""
+                <div class="warning">Fail gambar layout tidak dijumpai: <b>{CENTER_IMAGE}</b></div>
+                """
+
+            missing_html = ""
+            if missing_meja:
+                missing_html = f"""
+                <div class="warning">
+                    Meja ini belum ada coordinate dalam layout: {", ".join(missing_meja)}
+                </div>
+                """
+
+            result_content = f"""
+            <div class="card">
+                <div class="success">Rekod dijumpai. BIL: {bil_value}</div>
+
+                <h2>Maklumat Kehadiran</h2>
+                {table_html(group_df[display_cols])}
+
+                {layout_html}
+                {missing_html}
+
+                <div class="info">Last Updated: {get_updated_time()}</div>
+
+                {message_status}
+
+                <form method="POST" class="host">
+                    <input type="hidden" name="search_no" value="{search_no}">
+                    <label>Kata Laluan Host</label>
+                    <input type="password" name="password" placeholder="Masukkan password host">
+                    <button type="submit" name="action" value="submit">
+                        Submit / Tandakan Kehadiran Kumpulan Ini
+                    </button>
+                </form>
+            </div>
+            """
+
+    content = f"""
+    <div class="card">
+        <h2>Carian Nombor Tentera</h2>
+
+        <form method="POST">
+            <label>Masukkan No Tentera</label>
+            <input name="search_no" maxlength="10" placeholder="Contoh: 3004463" value="{search_no}">
+            <button type="submit" name="action" value="search">Cari Kehadiran</button>
+        </form>
+    </div>
+
+    {result_content}
+    """
+
+    return html_page(content)
 
 
-# =========================================================
-# LIVE ATTENDANCE - HOST ONLY
-# =========================================================
-if st.session_state.host_logged_in:
-    st.markdown("### 📋 Live Attendance / Kehadiran Semasa")
+@app.route("/admin")
+def admin():
+    df = load_data()
+    attendance_df = load_attendance()
 
     hadir_noten = []
 
     if not attendance_df.empty and "NOTEN" in attendance_df.columns:
         hadir_noten = attendance_df["NOTEN"].astype(str).str.strip().tolist()
 
-    belum_hadir_df = df[
-        ~df["NOTEN"].astype(str).str.strip().isin(hadir_noten)
-    ].copy()
+    if not df.empty:
+        belum_hadir_df = df[
+            ~df["NOTEN"].astype(str).str.strip().isin(hadir_noten)
+        ].copy()
+    else:
+        belum_hadir_df = pd.DataFrame()
 
     total_semua = len(df)
     total_hadir = len(attendance_df)
-    total_belum_hadir = len(belum_hadir_df)
+    total_belum = len(belum_hadir_df)
 
-    st.info(f"Jumlah Keseluruhan: {total_semua}")
-    st.success(f"Jumlah Telah Hadir: {total_hadir}")
-    st.warning(f"Jumlah Belum Hadir: {total_belum_hadir}")
+    belum_cols = ["BIL", "NOTEN", "NAMA", "MENU", "MEJA"]
+    if not belum_hadir_df.empty and "CATATAN" in belum_hadir_df.columns:
+        belum_cols.append("CATATAN")
 
-    st.markdown("### ✅ Telah Hadir")
+    content = f"""
+    <div class="card">
+        <h2>Live Attendance / Kehadiran Semasa</h2>
 
-    if attendance_df.empty:
-        st.warning("Belum ada rekod kehadiran.")
-    else:
-        st.dataframe(attendance_df, use_container_width=True)
+        <div class="info">Jumlah Keseluruhan: {total_semua}</div>
+        <div class="success">Jumlah Telah Hadir: {total_hadir}</div>
+        <div class="warning">Jumlah Belum Hadir: {total_belum}</div>
 
-    st.markdown("### ❌ Belum Hadir")
+        <h2>✅ Telah Hadir</h2>
+        {table_html(attendance_df)}
 
-    if belum_hadir_df.empty:
-        st.success("Semua telah hadir.")
-    else:
-        belum_cols = ["BIL", "NOTEN", "NAMA", "MENU", "MEJA"]
+        <h2>❌ Belum Hadir</h2>
+        {table_html(belum_hadir_df[belum_cols]) if not belum_hadir_df.empty else "<div class='success'>Semua telah hadir.</div>"}
+    </div>
+    """
 
-        if "CATATAN" in belum_hadir_df.columns:
-            belum_cols.append("CATATAN")
+    return html_page(content)
 
-        st.dataframe(belum_hadir_df[belum_cols], use_container_width=True)
 
-    csv_data = attendance_df.to_csv(index=False).encode("utf-8")
-
-    st.download_button(
-        label="Muat Turun Rekod Kehadiran",
-        data=csv_data,
-        file_name="attendance_records.csv",
-        mime="text/csv"
-    )
+if __name__ == "__main__":
+    app.run(debug=True)
