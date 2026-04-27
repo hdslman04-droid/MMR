@@ -19,14 +19,6 @@ CENTER_IMAGE = "LAYOUT SUSUNAN.png"
 HOST_PASSWORD = "host123"
 REQUIRED_COLS = ["BIL", "NOTEN", "NAMA", "MENU", "MEJA"]
 
-@app.before_request
-def before_request():
-    session.permanent = True
-
-
-# =========================
-# BASIC FUNCTIONS
-# =========================
 
 def clean_csv(df_raw):
     df_raw = df_raw.dropna(how="all").reset_index(drop=True)
@@ -262,7 +254,7 @@ def submit_attendance_for_search(search_no):
     df = load_data()
     attendance_df = load_attendance()
 
-    result_df = df[
+    result_df = df[ 
         df["NOTEN"].astype(str).str.contains(search_no, case=False, na=False)
     ].copy()
 
@@ -330,29 +322,21 @@ def build_sidebar(message="", search_no=""):
         </aside>
         """
 
-    submit_html = ""
-
-    if search_no:
-        submit_html = f"""
+    # Add the "Last Updated" section after host login
+    last_updated_time = get_updated_time()  # Get the last updated time
+    submit_html = f"""
         <div class="side-card">
             <h3>Submit Kehadiran</h3>
+            <p class="side-note">Last Updated: {last_updated_time}</p>
             <p class="side-note">No Tentera dicari: <b>{search_no}</b></p>
-
             <form method="POST">
                 <input type="hidden" name="search_no" value="{search_no}">
                 <button type="submit" name="action" value="submit">
-                    Submit / Tandakan Kehadiran
+                    Submit Kehadiran
                 </button>
             </form>
         </div>
-        """
-    else:
-        submit_html = """
-        <div class="side-card">
-            <h3>Submit Kehadiran</h3>
-            <p class="side-note">Cari No Tentera dahulu untuk submit kehadiran.</p>
-        </div>
-        """
+        """ 
 
     return f"""
     <aside class="sidebar">
@@ -367,17 +351,6 @@ def build_sidebar(message="", search_no=""):
             <form method="POST">
                 <button type="submit" name="action" value="host_logout">
                     Logout Host
-                </button>
-            </form>
-        </div>
-
-        <div class="side-card">
-            <h3>Upload CSV Baru</h3>
-
-            <form method="POST" enctype="multipart/form-data">
-                <input type="file" name="csv_file" accept=".csv">
-                <button type="submit" name="action" value="upload_csv">
-                    Upload CSV & Reset Kehadiran
                 </button>
             </form>
         </div>
@@ -598,4 +571,52 @@ def html_page(content, sidebar_message="", search_no=""):
         }}
 
         .warning {{
-           
+            background: #422006;
+            border: 1px solid #f59e0b;
+            padding: 15px;
+            border-radius: 12px;
+            margin-bottom: 18px;
+        }}
+
+        .info {{
+            background: #102a43;
+            border: 1px solid #38bdf8;
+            color: #60a5fa;
+            padding: 15px;
+            border-radius: 12px;
+            margin-bottom: 18px;
+        }}
+
+        table {{
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 12px;
+            font-size: 14px;
+        }}
+
+        th, td {{
+            padding: 10px;
+            border: 1px solid #334155;
+            text-align: left;
+        }}
+
+        th {{
+            background: #1e3a8a;
+        }}
+
+        td {{
+            background: #0f172a;
+        }}
+
+        .table-wrap {{
+            overflow-x: auto;
+        }}
+
+        .layout-img {{
+            width: 100%;
+            border-radius: 14px;
+            border: 1px solid #334155;
+            margin-top: 12px;
+        }}
+
+        @media (max
