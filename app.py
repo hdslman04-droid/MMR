@@ -592,4 +592,10 @@ def html_page(content, sidebar_message="", search_no=""):
         .success {{
             background: #14532d;
             border: 1px solid #22c55e;
+            padding: 15px;
+            border-radius: 12px;
+            margin-bottom: 18px;
+        }}
+
+        .warning {{
            
