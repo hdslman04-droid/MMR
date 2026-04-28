@@ -1,2 +1,11 @@
-[project.scripts]
-app = "backend.server:app"
+[project]
+name = "your-project-name"  # <-- Add this line
+version = "0.1.0"
+dependencies = [
+    "Flask",
+    "pandas",
+    "Pillow"
+]
+
+[tool.poetry]
+# Add other configurations if using Poetry
