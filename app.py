@@ -939,5 +939,3 @@ def admin():
     return html_page(content)
 
 
-if __name__ == "__main__":
-    app.run(debug=True)
