@@ -1,5 +1,5 @@
 [project]
-name = "your-project-name"  # <-- Add this line
+name = "MMR"
 version = "0.1.0"
 dependencies = [
     "Flask",
