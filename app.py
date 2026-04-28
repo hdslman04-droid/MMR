@@ -414,20 +414,28 @@ def html_page(content, sidebar_message="", search_no=""):
             color: white;
         }}
 
-        .menu-btn {{
-            position: fixed;
-            top: 16px;
-            left: 16px;
-            z-index: 10000;
-            background: #2563eb;
-            color: white;
-            border: none;
-            width: 48px;
-            height: 48px;
-            border-radius: 12px;
-            font-size: 24px;
-            cursor: pointer;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+       .menu-btn {
+    position: fixed;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%); /* Centers the button */
+    width: 48px;
+    height: 48px;
+    background-color: #2563eb; /* Blue background */
+    display: flex;
+    justify-content: center; /* Centers the lines horizontally */
+    align-items: center; /* Centers the lines vertically */
+    border-radius: 12px; /* Optional: rounded corners */
+    cursor: pointer;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+}
+
+.menu-btn div {
+    width: 24px; /* Width of each line */
+    height: 3px; /* Height of each line */
+    background-color: white; /* White lines */
+    margin: 3px 0; /* Spacing between the lines */
+}
         }}
 
         .layout {{
