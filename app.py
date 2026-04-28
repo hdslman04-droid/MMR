@@ -2,7 +2,7 @@ import base64
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
-
+import io
 import pandas as pd
 from flask import Flask, request, session
 from PIL import Image, ImageDraw
@@ -201,9 +201,6 @@ def generate_seat_map():
 
     return seat_map
 
-   import io
-from PIL import Image, ImageDraw
-import base64
 
 def generate_highlighted_layout(group_df):
     path = Path(CENTER_IMAGE)
@@ -248,20 +245,24 @@ def generate_highlighted_layout(group_df):
 
     highlighted = Image.alpha_composite(image, overlay)
 
-    # Use in-memory BytesIO buffer instead of saving to disk
+    # Create an in-memory file (BytesIO) instead of saving to disk
     img_byte_arr = io.BytesIO()
     highlighted.convert("RGB").save(img_byte_arr, format='PNG')
-    img_byte_arr.seek(0)  # Move to the start of the BytesIO object
+    img_byte_arr.seek(0)  # Reset the pointer to the start of the BytesIO object
 
-    # Convert to base64 for embedding in HTML
-    return base64.b64encode(img_byte_arr.getvalue()).decode(), missing_meja
+    # Convert to base64 to be embedded in the HTML
+    layout_base64 = base64.b64encode(img_byte_arr.getvalue()).decode()
+
+    # Return the base64 string and any missing meja information
+    return layout_base64, missing_meja
+
 
 def submit_attendance_for_search(search_no):
     df = load_data()
     attendance_df = load_attendance()
 
-    result_df = df[
-        df["NOTEN"].astype(str).str.contains(search_no, case=False, na=False)
+    result_df = df[ 
+        df["NOTEN"].astype(str).str.contains(search_no, case=False, na=False) 
     ].copy()
 
     if result_df.empty:
@@ -328,7 +329,7 @@ def build_sidebar(message="", search_no=""):
         </aside>
         """
 
-    submit_html = ""
+    submit_html = "" 
 
     if search_no:
         submit_html = f"""
@@ -405,7 +406,7 @@ def html_page(content, sidebar_message="", search_no=""):
 <!DOCTYPE html>
 <html>
 <head>
-    <title>MMR KPA (GAJI)</title>
+    <title>Majlis Makan Malam Rejimental Penghargaan Brigedier Jeneral Dato' Zamzuri bin Harun</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
     <style>
