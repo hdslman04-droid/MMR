@@ -254,8 +254,8 @@ def submit_attendance_for_search(search_no):
     df = load_data()
     attendance_df = load_attendance()
 
-    result_df = df[
-        df["NOTEN"].astype(str).str.contains(search_no, case=False, na=False)
+    result_df = df[ 
+        df["NOTEN"].astype(str).str.contains(search_no, case=False, na=False) 
     ].copy()
 
     if result_df.empty:
@@ -321,35 +321,45 @@ def build_sidebar(message="", search_no=""):
             </div>
         </aside>
         """
-
-    submit_html = ""
-
-    if search_no:
-        submit_html = f"""
-        <div class="side-card">
-            <h3>Submit Kehadiran</h3>
-            <p class="side-note">No Tentera dicari: <b>{search_no}</b></p>
-
-            <form method="POST">
-                <input type="hidden" name="search_no" value="{search_no}">
-                <button type="submit" name="action" value="submit">
-                    Submit / Tandakan Kehadiran
-                </button>
-            </form>
-        </div>
-        """
-    else:
-        submit_html = """
+    
+    submit_html = """
         <div class="side-card">
             <h3>Submit Kehadiran</h3>
             <p class="side-note">Cari No Tentera dahulu untuk submit kehadiran.</p>
         </div>
-        """
+    """
 
+    upload_csv_html = """
+        <div class="side-card">
+            <h3>Upload CSV Baru</h3>
+
+            <form method="POST" enctype="multipart/form-data">
+                <input type="file" name="csv_file" accept=".csv">
+                <button type="submit" name="action" value="upload_csv">
+                    Upload CSV & Reset Kehadiran
+                </button>
+            </form>
+        </div>
+    """
+    
+    if host_logged_in:
+        submit_html = """
+            <div class="side-card">
+                <h3>Submit Kehadiran</h3>
+                <p class="side-note">No Tentera dicari: <b>{search_no}</b></p>
+
+                <form method="POST">
+                    <input type="hidden" name="search_no" value="{search_no}">
+                    <button type="submit" name="action" value="submit">
+                        Submit / Tandakan Kehadiran
+                    </button>
+                </form>
+            </div>
+        """
+        
     return f"""
     <aside class="sidebar">
         <h2>Host Panel</h2>
-
         {message}
 
         <div class="side-card">
@@ -363,16 +373,7 @@ def build_sidebar(message="", search_no=""):
             </form>
         </div>
 
-        <div class="side-card">
-            <h3>Upload CSV Baru</h3>
-
-            <form method="POST" enctype="multipart/form-data">
-                <input type="file" name="csv_file" accept=".csv">
-                <button type="submit" name="action" value="upload_csv">
-                    Upload CSV & Reset Kehadiran
-                </button>
-            </form>
-        </div>
+        {upload_csv_html}
 
         {submit_html}
 
@@ -399,7 +400,7 @@ def html_page(content, sidebar_message="", search_no=""):
 <!DOCTYPE html>
 <html>
 <head>
-    <title>MMR KPA (GAJI)</title>
+    <title>Majlis Makan Malam Rejimental Penghargaan Brigedier Jeneral Dato' Zamzuri bin Harun</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
     <style>
@@ -684,7 +685,7 @@ def html_page(content, sidebar_message="", search_no=""):
                 <div class="header">
                     {logo_html}
                     <div>
-                        <h1>Sistem Kehadiran Majlis Makan Malam Regimental KPA (GAJI)</h1>
+                        <h1>Majlis Makan Malam Rejimental Penghargaan Brigedier Jeneral Dato' Zamzuri bin Harun</h1>
                     </div>
                 </div>
 
@@ -701,243 +702,6 @@ def html_page(content, sidebar_message="", search_no=""):
 </body>
 </html>
 """
-
-
-@app.route("/", methods=["GET", "POST"])
-def home():
-    sidebar_message = ""
-    result_content = ""
-    search_no = ""
-
-    action = request.form.get("action", "")
-
-    if request.method == "POST":
-        if action == "host_login":
-            password = request.form.get("password", "").strip()
-
-            if password == HOST_PASSWORD:
-                session["host_logged_in"] = True
-                sidebar_message = "<div class='success'>Login host berjaya.</div>"
-            else:
-                sidebar_message = "<div class='warning'>Kata laluan host salah.</div>"
-
-        elif action == "host_logout":
-            session["host_logged_in"] = False
-            sidebar_message = "<div class='info'>Host telah logout.</div>"
-
-        elif action == "upload_csv":
-            if not session.get("host_logged_in", False):
-                sidebar_message = "<div class='warning'>Sila login host dahulu.</div>"
-            else:
-                uploaded_file = request.files.get("csv_file")
-
-                if not uploaded_file or uploaded_file.filename == "":
-                    sidebar_message = "<div class='warning'>Sila pilih fail CSV.</div>"
-                else:
-                    try:
-                        df_raw = pd.read_csv(uploaded_file, encoding="utf-8")
-                        new_df = clean_csv(df_raw)
-
-                        missing_cols = [col for col in REQUIRED_COLS if col not in new_df.columns]
-
-                        if missing_cols:
-                            sidebar_message = f"""
-                            <div class='warning'>
-                                CSV baru tidak lengkap.<br>
-                                Kolum tiada: {missing_cols}
-                            </div>
-                            """
-                        else:
-                            new_df.to_csv(DATA_FILE, index=False, encoding="utf-8")
-                            reset_attendance()
-
-                            sidebar_message = """
-                            <div class='success'>
-                                CSV baru berjaya dimuat naik.<br>
-                                Rekod kehadiran telah direset.
-                            </div>
-                            """
-
-                    except Exception as e:
-                        sidebar_message = f"<div class='warning'>Fail tidak dapat dibaca: {e}</div>"
-
-        elif action == "submit":
-            search_no = request.form.get("search_no", "").strip()
-
-            if not session.get("host_logged_in", False):
-                sidebar_message = "<div class='warning'>Sila login host dahulu.</div>"
-            elif not search_no:
-                sidebar_message = "<div class='warning'>Cari No Tentera dahulu.</div>"
-            else:
-                sidebar_message = submit_attendance_for_search(search_no)
-
-    df = load_data()
-    attendance_df = load_attendance()
-
-    if df.empty:
-        content = f"""
-        <div class="warning">
-            Fail CSV tidak dijumpai atau format CSV salah.<br>
-            Pastikan file ini wujud: <b>{DATA_FILE}</b>
-        </div>
-        """
-        return html_page(content, sidebar_message, search_no)
-
-    missing_cols = [col for col in REQUIRED_COLS if col not in df.columns]
-
-    if missing_cols:
-        content = f"""
-        <div class="warning">
-            Kolum berikut tiada dalam CSV: <b>{missing_cols}</b>
-        </div>
-        """
-        return html_page(content, sidebar_message, search_no)
-
-    if request.method == "POST" and action in ["search", "submit"]:
-        if not search_no:
-            search_no = request.form.get("search_no", "").strip()
-
-        result_df = df[
-            df["NOTEN"].astype(str).str.contains(search_no, case=False, na=False)
-        ].copy()
-
-        if result_df.empty:
-            result_content = """
-            <div class="warning">Tiada rekod dijumpai untuk nombor tentera tersebut.</div>
-            """
-        else:
-            bil_value = str(result_df.iloc[0]["BIL"]).strip()
-            group_df = df[df["BIL"].astype(str).str.strip() == bil_value].copy()
-
-            attendance_df = load_attendance()
-
-            hadir_noten = []
-            if not attendance_df.empty and "NOTEN" in attendance_df.columns:
-                hadir_noten = attendance_df["NOTEN"].astype(str).str.strip().tolist()
-
-            sudah_hadir_semua = True
-
-            for _, row in group_df.iterrows():
-                noten = str(row["NOTEN"]).strip()
-                if noten not in hadir_noten:
-                    sudah_hadir_semua = False
-
-            message_status = (
-                "<div class='success'>✅ TELAH HADIR</div>"
-                if sudah_hadir_semua
-                else "<div class='warning'>❌ BELUM HADIR</div>"
-            )
-
-            display_cols = ["BIL", "NOTEN", "NAMA", "MENU", "MEJA"]
-
-            if "CATATAN" in group_df.columns:
-                display_cols.append("CATATAN")
-
-            layout_base64, missing_meja = generate_highlighted_layout(group_df)
-
-            if layout_base64:
-                layout_html = f"""
-                <h2>Pelan Kedudukan Dewan</h2>
-                <img src="data:image/png;base64,{layout_base64}" class="layout-img">
-                """
-            else:
-                layout_html = f"""
-                <div class="warning">
-                    Fail gambar layout tidak dijumpai: <b>{CENTER_IMAGE}</b>
-                </div>
-                """
-
-            missing_html = ""
-            if missing_meja:
-                missing_html = f"""
-                <div class="warning">
-                    Meja ini belum ada coordinate dalam layout: {", ".join(missing_meja)}
-                </div>
-                """
-
-            result_content = f"""
-            <div class="card">
-                <div class="success">Rekod dijumpai. BIL: {bil_value}</div>
-
-                <h2>Maklumat Kehadiran</h2>
-                <div class="table-wrap">
-                    {table_html(group_df[display_cols])}
-                </div>
-
-                {layout_html}
-                {missing_html}
-
-                <div class="info">Last Updated: {get_updated_time()}</div>
-
-                {message_status}
-            </div>
-            """
-
-    content = f"""
-    <div class="card">
-        <h2>Carian Nombor Tentera</h2>
-
-        <form method="POST">
-            <label>Masukkan No Tentera</label>
-            <input name="search_no" maxlength="10" placeholder="Contoh: 3004463" value="{search_no}">
-            <button type="submit" name="action" value="search">Cari Kehadiran</button>
-        </form>
-    </div>
-
-    {result_content}
-    """
-
-    return html_page(content, sidebar_message, search_no)
-
-
-@app.route("/admin")
-def admin():
-    df = load_data()
-    attendance_df = load_attendance()
-
-    hadir_noten = []
-
-    if not attendance_df.empty and "NOTEN" in attendance_df.columns:
-        hadir_noten = attendance_df["NOTEN"].astype(str).str.strip().tolist()
-
-    if not df.empty:
-        belum_hadir_df = df[
-            ~df["NOTEN"].astype(str).str.strip().isin(hadir_noten)
-        ].copy()
-    else:
-        belum_hadir_df = pd.DataFrame()
-
-    total_semua = len(df)
-    total_hadir = len(attendance_df)
-    total_belum = len(belum_hadir_df)
-
-    belum_cols = ["BIL", "NOTEN", "NAMA", "MENU", "MEJA"]
-
-    if not belum_hadir_df.empty and "CATATAN" in belum_hadir_df.columns:
-        belum_cols.append("CATATAN")
-
-    content = f"""
-    <div class="card">
-        <h2>📋 Live Attendance / Kehadiran Semasa</h2>
-
-        <div class="info">Jumlah Keseluruhan: {total_semua}</div>
-        <div class="success">Jumlah Telah Hadir: {total_hadir}</div>
-        <div class="warning">Jumlah Belum Hadir: {total_belum}</div>
-
-        <h2>✅ Telah Hadir</h2>
-        <div class="table-wrap">
-            {table_html(attendance_df)}
-        </div>
-
-        <h2>❌ Belum Hadir</h2>
-        <div class="table-wrap">
-            {table_html(belum_hadir_df[belum_cols]) if not belum_hadir_df.empty else "<div class='success'>Semua telah hadir.</div>"}
-        </div>
-    </div>
-    """
-
-    return html_page(content)
-
-
+# Ensure to run the app on your server
 if __name__ == "__main__":
     app.run(debug=True)
