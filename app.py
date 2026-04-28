@@ -1009,6 +1009,112 @@ def home():
 
     return html_page(content, sidebar_message, search_no)
 
+    missing_cols = [col for col in REQUIRED_COLS if col not in df.columns]
+
+    if missing_cols:
+        content = f"""
+        <div class="warning">
+            Kolum berikut tiada dalam CSV: <b>{missing_cols}</b>
+        </div>
+        """
+        return html_page(content, sidebar_message, search_no)
+
+    if request.method == "POST" and action in ["search", "submit"]:
+        if not search_no:
+            search_no = request.form.get("search_no", "").strip()
+
+        result_df = df[
+            df["NOTEN"].astype(str).str.contains(search_no, case=False, na=False)
+        ].copy()
+
+        if result_df.empty:
+            result_content = """
+            <div class="warning">Tiada rekod dijumpai untuk nombor tentera tersebut.</div>
+            """
+        else:
+            bil_value = str(result_df.iloc[0]["BIL"]).strip()
+            group_df = df[df["BIL"].astype(str).str.strip() == bil_value].copy()
+
+            attendance_df = load_attendance()
+
+            hadir_noten = []
+            if not attendance_df.empty and "NOTEN" in attendance_df.columns:
+                hadir_noten = attendance_df["NOTEN"].astype(str).str.strip().tolist()
+
+            sudah_hadir_semua = True
+
+            for _, row in group_df.iterrows():
+                noten = str(row["NOTEN"]).strip()
+                if noten not in hadir_noten:
+                    sudah_hadir_semua = False
+
+            message_status = (
+                "<div class='success'>✅ TELAH HADIR</div>"
+                if sudah_hadir_semua
+                else "<div class='warning'>❌ BELUM HADIR</div>"
+            )
+
+            display_cols = ["BIL", "NOTEN", "NAMA", "MENU", "MEJA"]
+
+            if "CATATAN" in group_df.columns:
+                display_cols.append("CATATAN")
+
+            layout_base64, missing_meja = generate_highlighted_layout(group_df)
+
+            if layout_base64:
+                layout_html = f"""
+                <h2>Pelan Kedudukan Dewan</h2>
+                <img src="data:image/png;base64,{layout_base64}" class="layout-img">
+                """
+            else:
+                layout_html = f"""
+                <div class="warning">
+                    Fail gambar layout tidak dijumpai: <b>{CENTER_IMAGE}</b>
+                </div>
+                """
+
+            missing_html = ""
+            if missing_meja:
+                missing_html = f"""
+                <div class="warning">
+                    Meja ini belum ada coordinate dalam layout: {", ".join(missing_meja)}
+                </div>
+                """
+
+            result_content = f"""
+            <div class="card">
+                <div class="success">Rekod dijumpai. BIL: {bil_value}</div>
+
+                <h2>Maklumat Kehadiran</h2>
+                <div class="table-wrap">
+                    {table_html(group_df[display_cols])}
+                </div>
+
+                {layout_html}
+                {missing_html}
+
+                <div class="info">Last Updated: {get_updated_time()}</div>
+
+                {message_status}
+            </div>
+            """
+
+    content = f"""
+    <div class="card">
+        <h2>Carian Nombor Tentera</h2>
+
+        <form method="POST">
+            <label>Masukkan No Tentera</label>
+            <input name="search_no" maxlength="10" placeholder="Contoh: 3004463" value="{search_no}">
+            <button type="submit" name="action" value="search">Cari Kehadiran</button>
+        </form>
+    </div>
+
+    {result_content}
+    """
+
+    return html_page(content, sidebar_message, search_no)
+
 
 @app.route("/admin")
 def admin():
