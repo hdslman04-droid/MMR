@@ -684,7 +684,7 @@ def html_page(content, sidebar_message="", search_no=""):
                 <div class="header">
                     {logo_html}
                     <div>
-                        <h1>Sistem Kehadiran Majlis Makan Malam Regimental KPA (GAJI)</h1>
+                       <h1>Majlis Makan Malam Rejimental Penghargaan Brigedier Jeneral Dato' Zamzuri bin Harun</h1>
                     </div>
                 </div>
 
