@@ -684,7 +684,7 @@ def html_page(content, sidebar_message="", search_no=""):
                 <div class="header">
                     {logo_html}
                     <div>
-                          <h1>Majlis Makan Malam Rejimental Penghargaan Brigedier Jeneral Dato' Zamzuri bin Harun</h1>
+                        <h1>Sistem Kehadiran Majlis Makan Malam Regimental KPA (GAJI)</h1>
                     </div>
                 </div>
 
@@ -854,6 +854,10 @@ def home():
                     Meja ini belum ada coordinate dalam layout: {", ".join(missing_meja)}
                 </div>
                 """
+
+            result_content = f"""
+            <div class="card">
+                <div class="success">Rekod dijumpai. BIL: {bil_value}</div>
 
                 <h2>Maklumat Kehadiran</h2>
                 <div class="table-wrap">
