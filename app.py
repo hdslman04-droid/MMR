@@ -682,7 +682,11 @@ def html_page(content, sidebar_message="", search_no=""):
 </head>
 
 <body>
-    <button class="menu-btn" onclick="toggleSidebar()">☰</button>
+    <button class="menu-btn"> onclick="toggleSidebar()">☰</button>
+    <div></div>
+    <div></div>
+    <div></div>
+</button>
 
     <div class="layout sidebar-closed" id="layout">
         {sidebar}
