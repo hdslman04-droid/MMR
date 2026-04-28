@@ -19,6 +19,7 @@ CENTER_IMAGE = "LAYOUT SUSUNAN.png"
 HOST_PASSWORD = "host123"
 REQUIRED_COLS = ["BIL", "NOTEN", "NAMA", "MENU", "MEJA"]
 
+
 def clean_csv(df_raw):
     df_raw = df_raw.dropna(how="all").reset_index(drop=True)
     df_raw.columns = [str(col).strip().upper() for col in df_raw.columns]
@@ -60,12 +61,14 @@ def clean_csv(df_raw):
 
     return df
 
+
 def load_data():
     if not Path(DATA_FILE).exists():
         return pd.DataFrame()
 
     df_raw = pd.read_csv(DATA_FILE, encoding="utf-8")
     return clean_csv(df_raw)
+
 
 def load_attendance():
     if Path(ATTENDANCE_FILE).exists():
@@ -88,8 +91,10 @@ def load_attendance():
         "STATUS_KEHADIRAN", "TARIKH_MASA"
     ])
 
+
 def save_attendance(attendance_df):
     attendance_df.to_csv(ATTENDANCE_FILE, index=False, encoding="utf-8")
+
 
 def reset_attendance():
     reset_df = pd.DataFrame(columns=[
@@ -97,6 +102,7 @@ def reset_attendance():
         "STATUS_KEHADIRAN", "TARIKH_MASA"
     ])
     reset_df.to_csv(ATTENDANCE_FILE, index=False, encoding="utf-8")
+
 
 def get_base64_image(image_path):
     path = Path(image_path)
@@ -106,6 +112,7 @@ def get_base64_image(image_path):
 
     with open(path, "rb") as f:
         return base64.b64encode(f.read()).decode()
+
 
 def get_updated_time():
     files = [Path(DATA_FILE), Path(ATTENDANCE_FILE)]
@@ -122,11 +129,13 @@ def get_updated_time():
 
     return latest_time.strftime("%d/%m/%Y %I:%M:%S %p")
 
+
 def table_html(df):
     if df.empty:
         return "<div class='warning'>Tiada data.</div>"
 
     return df.to_html(index=False, escape=False, classes="data-table")
+
 
 def generate_seat_map():
     seat_map = {}
@@ -192,6 +201,7 @@ def generate_seat_map():
 
     return seat_map
 
+
 def generate_highlighted_layout(group_df):
     path = Path(CENTER_IMAGE)
 
@@ -239,6 +249,7 @@ def generate_highlighted_layout(group_df):
 
     return get_base64_image(temp_file), missing_meja
 
+
 def submit_attendance_for_search(search_no):
     df = load_data()
     attendance_df = load_attendance()
@@ -285,6 +296,7 @@ def submit_attendance_for_search(search_no):
         return "<div class='success'>Kehadiran berjaya direkodkan.</div>"
 
     return "<div class='info'>Semua dalam BIL ini telah ditandakan hadir.</div>"
+
 
 def build_sidebar(message="", search_no=""):
     host_logged_in = session.get("host_logged_in", False)
@@ -372,6 +384,7 @@ def build_sidebar(message="", search_no=""):
     </aside>
     """
 
+
 def html_page(content, sidebar_message="", search_no=""):
     logo = get_base64_image(LOGO_UGAT)
 
@@ -383,56 +396,312 @@ def html_page(content, sidebar_message="", search_no=""):
     sidebar = build_sidebar(sidebar_message, search_no)
 
     return f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Majlis Makan Malam Rejimental Penghargaan<br> Brigedier Jeneral Dato' Zamzuri bin Harun</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <style>
-            * {{
-                box-sizing: border-box;
+<!DOCTYPE html>
+<html>
+<head>
+    <title>MMR KPA (GAJI)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <style>
+        * {{
+            box-sizing: border-box;
+        }}
+
+        body {{
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #070b16;
+            color: white;
+        }}
+
+        .menu-btn {{
+            position: fixed;
+            top: 16px;
+            left: 16px;
+            z-index: 10000;
+            background: #2563eb;
+            color: white;
+            border: none;
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            font-size: 24px;
+            cursor: pointer;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+        }}
+
+        .layout {{
+            display: flex;
+            min-height: 100vh;
+        }}
+
+        .sidebar {{
+            width: 300px;
+            background: #020617;
+            border-right: 1px solid #1e3a5f;
+            padding: 80px 20px 20px 20px;
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 100vh;
+            overflow-y: auto;
+            transition: transform 0.3s ease;
+            z-index: 9999;
+        }}
+
+        .layout.sidebar-closed .sidebar {{
+            transform: translateX(-100%);
+        }}
+
+        .main {{
+            flex: 1;
+            padding: 24px;
+            margin-left: 300px;
+            transition: margin-left 0.3s ease;
+        }}
+
+        .layout.sidebar-closed .main {{
+            margin-left: 0;
+        }}
+
+        .sidebar h2 {{
+            color: #38bdf8;
+            margin-top: 0;
+        }}
+
+        .side-card {{
+            background: #0d1320;
+            border: 1px solid #1e3a5f;
+            padding: 16px;
+            border-radius: 16px;
+            margin-bottom: 18px;
+        }}
+
+        .side-card h3 {{
+            margin-top: 0;
+            color: white;
+        }}
+
+        .side-link {{
+            display: block;
+            color: white;
+            text-decoration: none;
+            background: #1d4ed8;
+            padding: 12px;
+            border-radius: 10px;
+            margin-top: 10px;
+            text-align: center;
+            font-weight: bold;
+        }}
+
+        .side-note {{
+            color: #94a3b8;
+            font-size: 13px;
+        }}
+
+        .container {{
+            max-width: 950px;
+            margin: auto;
+        }}
+
+        .header {{
+            display: flex;
+            align-items: center;
+            gap: 18px;
+            background: linear-gradient(90deg, #020617, #111827);
+            padding: 22px;
+            border-radius: 18px;
+            border: 1px solid #1e3a5f;
+            margin-bottom: 24px;
+        }}
+
+        .logo {{
+            width: 70px;
+            height: 70px;
+            object-fit: contain;
+        }}
+
+        .logo-text {{
+            font-size: 55px;
+        }}
+
+        h1 {{
+            margin: 0;
+            font-size: 28px;
+            line-height: 1.25;
+        }}
+
+        h2 {{
+            color: #38bdf8;
+            margin-top: 0;
+        }}
+
+        .card {{
+            background: #0d1320;
+            border: 1px solid #1e3a5f;
+            padding: 22px;
+            border-radius: 18px;
+            margin-bottom: 22px;
+        }}
+
+        label {{
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+        }}
+
+        input {{
+            width: 100%;
+            padding: 15px;
+            border-radius: 12px;
+            border: 1px solid #334155;
+            background: #111827;
+            color: white;
+            font-size: 16px;
+            margin-bottom: 14px;
+        }}
+
+        input[type="file"] {{
+            padding: 12px;
+        }}
+
+        button {{
+            width: 100%;
+            padding: 15px;
+            border: none;
+            border-radius: 12px;
+            background: #2563eb;
+            color: white;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+        }}
+
+        button:hover {{
+            background: #1d4ed8;
+        }}
+
+        .success {{
+            background: #14532d;
+            border: 1px solid #22c55e;
+            padding: 15px;
+            border-radius: 12px;
+            margin-bottom: 18px;
+        }}
+
+        .warning {{
+            background: #422006;
+            border: 1px solid #f59e0b;
+            padding: 15px;
+            border-radius: 12px;
+            margin-bottom: 18px;
+        }}
+
+        .info {{
+            background: #102a43;
+            border: 1px solid #38bdf8;
+            color: #60a5fa;
+            padding: 15px;
+            border-radius: 12px;
+            margin-bottom: 18px;
+        }}
+
+        table {{
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 12px;
+            font-size: 14px;
+        }}
+
+        th, td {{
+            padding: 10px;
+            border: 1px solid #334155;
+            text-align: left;
+        }}
+
+        th {{
+            background: #1e3a8a;
+        }}
+
+        td {{
+            background: #0f172a;
+        }}
+
+        .table-wrap {{
+            overflow-x: auto;
+        }}
+
+        .layout-img {{
+            width: 100%;
+            border-radius: 14px;
+            border: 1px solid #334155;
+            margin-top: 12px;
+        }}
+
+        @media (max-width: 850px) {{
+            .sidebar {{
+                width: 320px;
+                max-width: 88vw;
             }}
 
-            body {{
-                margin: 0;
-                font-family: Arial, sans-serif;
-                background: #070b16;
-                color: white;
+            .main {{
+                margin-left: 0;
+                padding: 80px 14px 14px 14px;
             }}
 
-            /* Your CSS styles go here */
+            .layout:not(.sidebar-closed) .main {{
+                filter: brightness(0.7);
+            }}
 
-        </style>
-    </head>
+            h1 {{
+                font-size: 21px;
+            }}
 
-    <body>
-        <button class="menu-btn" onclick="toggleSidebar()">☰</button>
+            .header {{
+                padding: 16px;
+            }}
 
-        <div class="layout sidebar-closed" id="layout">
-            {sidebar}
+            .logo {{
+                width: 55px;
+                height: 55px;
+            }}
 
-            <main class="main">
-                <div class="container">
-                    <div class="header">
-                        {logo_html}
-                        <div>
-                            <h1>Majlis Makan Malam Rejimental Penghargaan<br> Brigedier Jeneral Dato' Zamzuri bin Harun</h1>
-                        </div>
+            table {{
+                font-size: 12px;
+            }}
+        }}
+    </style>
+</head>
+
+<body>
+    <button class="menu-btn" onclick="toggleSidebar()">☰</button>
+
+    <div class="layout sidebar-closed" id="layout">
+        {sidebar}
+
+        <main class="main">
+            <div class="container">
+                <div class="header">
+                    {logo_html}
+                    <div>
+                        <h1>Sistem Kehadiran Majlis Makan Malam Regimental KPA (GAJI)</h1>
                     </div>
-
-                    {content}
                 </div>
-            </main>
-        </div>
 
-        <script>
-            function toggleSidebar() {{
-                document.getElementById("layout").classList.toggle("sidebar-closed");
-            }}
-        </script>
-    </body>
-    </html>
-    """
+                {content}
+            </div>
+        </main>
+    </div>
+
+    <script>
+        function toggleSidebar() {{
+            document.getElementById("layout").classList.toggle("sidebar-closed");
+        }}
+    </script>
+</body>
+</html>
+"""
+
 
 @app.route("/", methods=["GET", "POST"])
 def home():
@@ -550,8 +819,7 @@ def home():
 
             for _, row in group_df.iterrows():
                 noten = str(row["NOTEN"]).strip()
-
-                                if noten not in hadir_noten:
+                if noten not in hadir_noten:
                     sudah_hadir_semua = False
 
             message_status = (
