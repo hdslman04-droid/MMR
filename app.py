@@ -326,25 +326,23 @@ def build_sidebar(message="", search_no=""):
 
     if search_no:
         submit_html = f"""
-        <div class="side-card">
-            <h3>Submit Kehadiran</h3>
-            <p class="side-note">No Tentera dicari: <b>{search_no}</b></p>
+      result_content = f"""
+<div class="card">
+    <div class="success">Rekod dijumpai. BIL: {bil_value}</div>
 
-            <form method="POST">
-                <input type="hidden" name="search_no" value="{search_no}">
-                <button type="submit" name="action" value="submit">
-                    Submit / Tandakan Kehadiran
-                </button>
-            </form>
-        </div>
-        """
-    else:
-        submit_html = """
-        <div class="side-card">
-            <h3>Submit Kehadiran</h3>
-            <p class="side-note">Cari No Tentera dahulu untuk submit kehadiran.</p>
-        </div>
-        """
+    <h2>Maklumat Kehadiran</h2>
+    <div class="table-wrap">
+        {table_html(group_df[display_cols])}
+    </div>
+
+    {layout_html}
+    {missing_html}
+
+    <div class="info">Last Updated: {get_updated_time()}</div>
+
+    {message_status}
+</div>
+"""
 
     return f"""
     <aside class="sidebar">
@@ -684,7 +682,7 @@ def html_page(content, sidebar_message="", search_no=""):
                 <div class="header">
                     {logo_html}
                     <div>
-                        <h1>Sistem Kehadiran Majlis Makan Malam Regimental KPA (GAJI)</h1>
+                        <h1>Majlis Makan Malam Rejimental Penghargaan Brigedier Jeneral Dato' Zamzuri bin Harun</h1>
                     </div>
                 </div>
 
@@ -855,23 +853,34 @@ def home():
                 </div>
                 """
 
-            result_content = f"""
-            <div class="card">
-                <div class="success">Rekod dijumpai. BIL: {bil_value}</div>
+  result_content = f"""
+<div class="card">
+    <div class="success">Rekod dijumpai. BIL: {bil_value}</div>
 
-                <h2>Maklumat Kehadiran</h2>
-                <div class="table-wrap">
-                    {table_html(group_df[display_cols])}
-                </div>
+    <h2>Maklumat Kehadiran</h2>
+    <div class="table-wrap">
+        {table_html(group_df[display_cols])}
+    </div>
 
-                {layout_html}
-                {missing_html}
+    {layout_html}
+    {missing_html}
 
-                <div class="info">Last Updated: {get_updated_time()}</div>
+    <div class="info">Last Updated: {get_updated_time()}</div>
 
-                {message_status}
-            </div>
-            """
+    {message_status}
+
+    <!-- Submit Kehadiran button appears here, after Host Login -->
+    <div class="side-card">
+        <h3>Submit Kehadiran</h3>
+        <form method="POST">
+            <input type="hidden" name="search_no" value="{search_no}">
+            <button type="submit" name="action" value="submit">
+                Submit / Tandakan Kehadiran
+            </button>
+        </form>
+    </div>
+</div>
+"""
 
     content = f"""
     <div class="card">
