@@ -19,7 +19,6 @@ CENTER_IMAGE = "LAYOUT SUSUNAN.png"
 HOST_PASSWORD = "host123"
 REQUIRED_COLS = ["BIL", "NOTEN", "NAMA", "MENU", "MEJA"]
 
-
 def clean_csv(df_raw):
     df_raw = df_raw.dropna(how="all").reset_index(drop=True)
     df_raw.columns = [str(col).strip().upper() for col in df_raw.columns]
@@ -61,14 +60,12 @@ def clean_csv(df_raw):
 
     return df
 
-
 def load_data():
     if not Path(DATA_FILE).exists():
         return pd.DataFrame()
 
     df_raw = pd.read_csv(DATA_FILE, encoding="utf-8")
     return clean_csv(df_raw)
-
 
 def load_attendance():
     if Path(ATTENDANCE_FILE).exists():
@@ -91,10 +88,8 @@ def load_attendance():
         "STATUS_KEHADIRAN", "TARIKH_MASA"
     ])
 
-
 def save_attendance(attendance_df):
     attendance_df.to_csv(ATTENDANCE_FILE, index=False, encoding="utf-8")
-
 
 def reset_attendance():
     reset_df = pd.DataFrame(columns=[
@@ -102,7 +97,6 @@ def reset_attendance():
         "STATUS_KEHADIRAN", "TARIKH_MASA"
     ])
     reset_df.to_csv(ATTENDANCE_FILE, index=False, encoding="utf-8")
-
 
 def get_base64_image(image_path):
     path = Path(image_path)
@@ -112,7 +106,6 @@ def get_base64_image(image_path):
 
     with open(path, "rb") as f:
         return base64.b64encode(f.read()).decode()
-
 
 def get_updated_time():
     files = [Path(DATA_FILE), Path(ATTENDANCE_FILE)]
@@ -129,13 +122,11 @@ def get_updated_time():
 
     return latest_time.strftime("%d/%m/%Y %I:%M:%S %p")
 
-
 def table_html(df):
     if df.empty:
         return "<div class='warning'>Tiada data.</div>"
 
     return df.to_html(index=False, escape=False, classes="data-table")
-
 
 def generate_seat_map():
     seat_map = {}
@@ -201,7 +192,6 @@ def generate_seat_map():
 
     return seat_map
 
-
 def generate_highlighted_layout(group_df):
     path = Path(CENTER_IMAGE)
 
@@ -249,7 +239,6 @@ def generate_highlighted_layout(group_df):
 
     return get_base64_image(temp_file), missing_meja
 
-
 def submit_attendance_for_search(search_no):
     df = load_data()
     attendance_df = load_attendance()
@@ -296,7 +285,6 @@ def submit_attendance_for_search(search_no):
         return "<div class='success'>Kehadiran berjaya direkodkan.</div>"
 
     return "<div class='info'>Semua dalam BIL ini telah ditandakan hadir.</div>"
-
 
 def build_sidebar(message="", search_no=""):
     host_logged_in = session.get("host_logged_in", False)
@@ -399,7 +387,7 @@ def html_page(content, sidebar_message="", search_no=""):
 <!DOCTYPE html>
 <html>
 <head>
-    <title>MMR KPA (GAJI)</title>
+    <title>Majlis Makan Malam Rejimental Penghargaan<br> Brigedier Jeneral Dato' Zamzuri bin Harun</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
     <style>
@@ -684,7 +672,7 @@ def html_page(content, sidebar_message="", search_no=""):
                 <div class="header">
                     {logo_html}
                     <div>
-                        <h1>Sistem Kehadiran Majlis Makan Malam Regimental KPA (GAJI)</h1>
+                        <h1>Majlis Makan Malam Rejimental Penghargaan<br> Brigedier Jeneral Dato' Zamzuri bin Harun</h1>
                     </div>
                 </div>
 
@@ -700,7 +688,6 @@ def html_page(content, sidebar_message="", search_no=""):
     </script>
 </body>
 </html>
-"""
 
 
 @app.route("/", methods=["GET", "POST"])
