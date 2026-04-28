@@ -2,7 +2,7 @@ import base64
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
-import io
+
 import pandas as pd
 from flask import Flask, request, session
 from PIL import Image, ImageDraw
@@ -64,10 +64,8 @@ def clean_csv(df_raw):
 
 def load_data():
     if not Path(DATA_FILE).exists():
-        print(f"Error: {DATA_FILE} does not exist.")  # Debugging line
         return pd.DataFrame()
 
-    print(f"Loading CSV from {DATA_FILE}")  # Debugging line
     df_raw = pd.read_csv(DATA_FILE, encoding="utf-8")
     return clean_csv(df_raw)
 
@@ -246,25 +244,18 @@ def generate_highlighted_layout(group_df):
             missing_meja.append(meja)
 
     highlighted = Image.alpha_composite(image, overlay)
+    temp_file = "highlighted_layout.png"
+    highlighted.convert("RGB").save(temp_file)
 
-    # Create an in-memory file (BytesIO) instead of saving to disk
-    img_byte_arr = io.BytesIO()
-    highlighted.convert("RGB").save(img_byte_arr, format='PNG')
-    img_byte_arr.seek(0)  # Reset the pointer to the start of the BytesIO object
-
-    # Convert to base64 to be embedded in the HTML
-    layout_base64 = base64.b64encode(img_byte_arr.getvalue()).decode()
-
-    # Return the base64 string and any missing meja information
-    return layout_base64, missing_meja
+    return get_base64_image(temp_file), missing_meja
 
 
 def submit_attendance_for_search(search_no):
     df = load_data()
     attendance_df = load_attendance()
 
-    result_df = df[ 
-        df["NOTEN"].astype(str).str.contains(search_no, case=False, na=False) 
+    result_df = df[
+        df["NOTEN"].astype(str).str.contains(search_no, case=False, na=False)
     ].copy()
 
     if result_df.empty:
@@ -331,7 +322,7 @@ def build_sidebar(message="", search_no=""):
         </aside>
         """
 
-    submit_html = "" 
+    submit_html = ""
 
     if search_no:
         submit_html = f"""
@@ -408,7 +399,7 @@ def html_page(content, sidebar_message="", search_no=""):
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Majlis Makan Malam Rejimental Penghargaan Brigedier Jeneral Dato' Zamzuri bin Harun</title>
+    <title>MMR KPA (GAJI)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
     <style>
@@ -693,7 +684,7 @@ def html_page(content, sidebar_message="", search_no=""):
                 <div class="header">
                     {logo_html}
                     <div>
-                       <h1>Majlis Makan Malam Rejimental Penghargaan Brigedier Jeneral Dato' Zamzuri bin Harun</h1>
+                        <h1>Sistem Kehadiran Majlis Makan Malam Regimental KPA (GAJI)</h1>
                     </div>
                 </div>
 
@@ -734,50 +725,42 @@ def home():
             session["host_logged_in"] = False
             sidebar_message = "<div class='info'>Host telah logout.</div>"
 
-       if action == "upload_csv":
-    if not session.get("host_logged_in", False):
-        sidebar_message = "<div class='warning'>Sila login host dahulu.</div>"
-    else:
-        uploaded_file = request.files.get("csv_file")
+        elif action == "upload_csv":
+            if not session.get("host_logged_in", False):
+                sidebar_message = "<div class='warning'>Sila login host dahulu.</div>"
+            else:
+                uploaded_file = request.files.get("csv_file")
 
-        if not uploaded_file or uploaded_file.filename == "":
-            sidebar_message = "<div class='warning'>Sila pilih fail CSV.</div>"
-        else:
-            try:
-                # Save the uploaded file and log the file path
-                uploaded_file.save(DATA_FILE)  # Overwrites the existing CSV file
-                print(f"File saved successfully to {DATA_FILE}")  # Debugging line
-
-                # Load the uploaded file
-                df_raw = pd.read_csv(DATA_FILE, encoding="utf-8")
-                print(f"Data loaded from {DATA_FILE}:")
-                print(df_raw.head())  # Log the first few rows for inspection
-                
-                # Clean the data
-                new_df = clean_csv(df_raw)
-
-                missing_cols = [col for col in REQUIRED_COLS if col not in new_df.columns]
-
-                if missing_cols:
-                    sidebar_message = f"""
-                    <div class='warning'>
-                        CSV baru tidak lengkap.<br>
-                        Kolum tiada: {missing_cols}
-                    </div>
-                    """
+                if not uploaded_file or uploaded_file.filename == "":
+                    sidebar_message = "<div class='warning'>Sila pilih fail CSV.</div>"
                 else:
-                    # Save the cleaned CSV to the original DATA_FILE
-                    new_df.to_csv(DATA_FILE, index=False, encoding="utf-8")
-                    reset_attendance()  # Reset the attendance records after a new upload
-                    sidebar_message = """
-                    <div class='success'>
-                        CSV baru berjaya dimuat naik.<br>
-                        Rekod kehadiran telah direset.
-                    </div>
-                    """
+                    try:
+                        df_raw = pd.read_csv(uploaded_file, encoding="utf-8")
+                        new_df = clean_csv(df_raw)
 
-            except Exception as e:
-                sidebar_message = f"<div class='warning'>Fail tidak dapat dibaca: {e}</div>"
+                        missing_cols = [col for col in REQUIRED_COLS if col not in new_df.columns]
+
+                        if missing_cols:
+                            sidebar_message = f"""
+                            <div class='warning'>
+                                CSV baru tidak lengkap.<br>
+                                Kolum tiada: {missing_cols}
+                            </div>
+                            """
+                        else:
+                            new_df.to_csv(DATA_FILE, index=False, encoding="utf-8")
+                            reset_attendance()
+
+                            sidebar_message = """
+                            <div class='success'>
+                                CSV baru berjaya dimuat naik.<br>
+                                Rekod kehadiran telah direset.
+                            </div>
+                            """
+
+                    except Exception as e:
+                        sidebar_message = f"<div class='warning'>Fail tidak dapat dibaca: {e}</div>"
+
         elif action == "submit":
             search_no = request.form.get("search_no", "").strip()
 
@@ -788,7 +771,6 @@ def home():
             else:
                 sidebar_message = submit_attendance_for_search(search_no)
 
-    # Rest of the code for loading data and rendering results
     df = load_data()
     attendance_df = load_attendance()
 
@@ -800,218 +782,6 @@ def home():
         </div>
         """
         return html_page(content, sidebar_message, search_no)
-
-    missing_cols = [col for col in REQUIRED_COLS if col not in df.columns]
-
-    if missing_cols:
-        content = f"""
-        <div class="warning">
-            Kolum berikut tiada dalam CSV: <b>{missing_cols}</b>
-        </div>
-        """
-        return html_page(content, sidebar_message, search_no)
-
-    if request.method == "POST" and action in ["search", "submit"]:
-        if not search_no:
-            search_no = request.form.get("search_no", "").strip()
-
-        result_df = df[
-            df["NOTEN"].astype(str).str.contains(search_no, case=False, na=False)
-        ].copy()
-
-        if result_df.empty:
-            result_content = """
-            <div class="warning">Tiada rekod dijumpai untuk nombor tentera tersebut.</div>
-            """
-        else:
-            bil_value = str(result_df.iloc[0]["BIL"]).strip()
-            group_df = df[df["BIL"].astype(str).str.strip() == bil_value].copy()
-
-            attendance_df = load_attendance()
-
-            hadir_noten = []
-            if not attendance_df.empty and "NOTEN" in attendance_df.columns:
-                hadir_noten = attendance_df["NOTEN"].astype(str).str.strip().tolist()
-
-            sudah_hadir_semua = True
-
-            for _, row in group_df.iterrows():
-                noten = str(row["NOTEN"]).strip()
-                if noten not in hadir_noten:
-                    sudah_hadir_semua = False
-
-            message_status = (
-                "<div class='success'>✅ TELAH HADIR</div>"
-                if sudah_hadir_semua
-                else "<div class='warning'>❌ BELUM HADIR</div>"
-            )
-
-            display_cols = ["BIL", "NOTEN", "NAMA", "MENU", "MEJA"]
-
-            if "CATATAN" in group_df.columns:
-                display_cols.append("CATATAN")
-
-            layout_base64, missing_meja = generate_highlighted_layout(group_df)
-
-            if layout_base64:
-                layout_html = f"""
-                <h2>Pelan Kedudukan Dewan</h2>
-                <img src="data:image/png;base64,{layout_base64}" class="layout-img">
-                """
-            else:
-                layout_html = f"""
-                <div class="warning">
-                    Fail gambar layout tidak dijumpai: <b>{CENTER_IMAGE}</b>
-                </div>
-                """
-
-            missing_html = ""
-            if missing_meja:
-                missing_html = f"""
-                <div class="warning">
-                    Meja ini belum ada coordinate dalam layout: {", ".join(missing_meja)}
-                </div>
-                """
-
-            result_content = f"""
-            <div class="card">
-                <div class="success">Rekod dijumpai. BIL: {bil_value}</div>
-
-                <h2>Maklumat Kehadiran</h2>
-                <div class="table-wrap">
-                    {table_html(group_df[display_cols])}
-                </div>
-
-                {layout_html}
-                {missing_html}
-
-                <div class="info">Last Updated: {get_updated_time()}</div>
-
-                {message_status}
-            </div>
-            """
-
-    content = f"""
-    <div class="card">
-        <h2>Carian Nombor Tentera</h2>
-
-        <form method="POST">
-            <label>Masukkan No Tentera</label>
-            <input name="search_no" maxlength="10" placeholder="Contoh: 3004463" value="{search_no}">
-            <button type="submit" name="action" value="search">Cari Kehadiran</button>
-        </form>
-    </div>
-
-    {result_content}
-    """
-
-    return html_page(content, sidebar_message, search_no)
-
-    missing_cols = [col for col in REQUIRED_COLS if col not in df.columns]
-
-    if missing_cols:
-        content = f"""
-        <div class="warning">
-            Kolum berikut tiada dalam CSV: <b>{missing_cols}</b>
-        </div>
-        """
-        return html_page(content, sidebar_message, search_no)
-
-    if request.method == "POST" and action in ["search", "submit"]:
-        if not search_no:
-            search_no = request.form.get("search_no", "").strip()
-
-        result_df = df[
-            df["NOTEN"].astype(str).str.contains(search_no, case=False, na=False)
-        ].copy()
-
-        if result_df.empty:
-            result_content = """
-            <div class="warning">Tiada rekod dijumpai untuk nombor tentera tersebut.</div>
-            """
-        else:
-            bil_value = str(result_df.iloc[0]["BIL"]).strip()
-            group_df = df[df["BIL"].astype(str).str.strip() == bil_value].copy()
-
-            attendance_df = load_attendance()
-
-            hadir_noten = []
-            if not attendance_df.empty and "NOTEN" in attendance_df.columns:
-                hadir_noten = attendance_df["NOTEN"].astype(str).str.strip().tolist()
-
-            sudah_hadir_semua = True
-
-            for _, row in group_df.iterrows():
-                noten = str(row["NOTEN"]).strip()
-                if noten not in hadir_noten:
-                    sudah_hadir_semua = False
-
-            message_status = (
-                "<div class='success'>✅ TELAH HADIR</div>"
-                if sudah_hadir_semua
-                else "<div class='warning'>❌ BELUM HADIR</div>"
-            )
-
-            display_cols = ["BIL", "NOTEN", "NAMA", "MENU", "MEJA"]
-
-            if "CATATAN" in group_df.columns:
-                display_cols.append("CATATAN")
-
-            layout_base64, missing_meja = generate_highlighted_layout(group_df)
-
-            if layout_base64:
-                layout_html = f"""
-                <h2>Pelan Kedudukan Dewan</h2>
-                <img src="data:image/png;base64,{layout_base64}" class="layout-img">
-                """
-            else:
-                layout_html = f"""
-                <div class="warning">
-                    Fail gambar layout tidak dijumpai: <b>{CENTER_IMAGE}</b>
-                </div>
-                """
-
-            missing_html = ""
-            if missing_meja:
-                missing_html = f"""
-                <div class="warning">
-                    Meja ini belum ada coordinate dalam layout: {", ".join(missing_meja)}
-                </div>
-                """
-
-            result_content = f"""
-            <div class="card">
-                <div class="success">Rekod dijumpai. BIL: {bil_value}</div>
-
-                <h2>Maklumat Kehadiran</h2>
-                <div class="table-wrap">
-                    {table_html(group_df[display_cols])}
-                </div>
-
-                {layout_html}
-                {missing_html}
-
-                <div class="info">Last Updated: {get_updated_time()}</div>
-
-                {message_status}
-            </div>
-            """
-
-    content = f"""
-    <div class="card">
-        <h2>Carian Nombor Tentera</h2>
-
-        <form method="POST">
-            <label>Masukkan No Tentera</label>
-            <input name="search_no" maxlength="10" placeholder="Contoh: 3004463" value="{search_no}">
-            <button type="submit" name="action" value="search">Cari Kehadiran</button>
-        </form>
-    </div>
-
-    {result_content}
-    """
-
-    return html_page(content, sidebar_message, search_no)
 
     missing_cols = [col for col in REQUIRED_COLS if col not in df.columns]
 
