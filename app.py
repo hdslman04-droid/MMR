@@ -763,52 +763,6 @@ def home():
                                 Rekod kehadiran telah direset.
                             </div>
                             """
-                            if action == "upload_csv":
-    if not session.get("host_logged_in", False):
-        sidebar_message = "<div class='warning'>Sila login host dahulu.</div>"
-    else:
-        uploaded_file = request.files.get("csv_file")
-
-        if not uploaded_file or uploaded_file.filename == "":
-            sidebar_message = "<div class='warning'>Sila pilih fail CSV.</div>"
-        else:
-            try:
-                # Save the uploaded file
-                uploaded_file.save(DATA_FILE)  # This will overwrite the existing CSV file
-                print(f"File saved successfully to {DATA_FILE}")
-
-                # Now reload the data using Pandas
-                df_raw = pd.read_csv(DATA_FILE, encoding="utf-8")
-                new_df = clean_csv(df_raw)  # Clean the CSV
-
-                # Check if required columns exist
-                missing_cols = [col for col in REQUIRED_COLS if col not in new_df.columns]
-
-                if missing_cols:
-                    sidebar_message = f"""
-                    <div class='warning'>
-                        CSV baru tidak lengkap.<br>
-                        Kolum tiada: {missing_cols}
-                    </div>
-                    """
-                else:
-                    # Save the cleaned CSV to the correct file
-                    new_df.to_csv(DATA_FILE, index=False, encoding="utf-8")
-                    reset_attendance()  # Reset attendance after the new upload
-
-                    # Clear cached data to ensure fresh data is used
-                    st.cache_data.clear()
-
-                    sidebar_message = """
-                    <div class='success'>
-                        CSV baru berjaya dimuat naik.<br>
-                        Rekod kehadiran telah direset.
-                    </div>
-                    """
-
-            except Exception as e:
-                sidebar_message = f"<div class='warning'>Fail tidak dapat dibaca: {e}</div>"
-
                     except Exception as e:
                         sidebar_message = f"<div class='warning'>Fail tidak dapat dibaca: {e}</div>"
 
@@ -822,6 +776,7 @@ def home():
             else:
                 sidebar_message = submit_attendance_for_search(search_no)
 
+    # Ensure data is loaded correctly
     df = load_data()
     attendance_df = load_attendance()
 
