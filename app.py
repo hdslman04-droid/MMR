@@ -709,60 +709,67 @@ def html_page(content, sidebar_message="", search_no=""):
 """
 
 
-@app.route("/", methods=["GET", "POST"])
+@app.route("/", methods=["POST"])
 def home():
     sidebar_message = ""
-    result_content = ""
-    search_no = ""
-
     action = request.form.get("action", "")
 
-    if request.method == "POST":
-        if action == "host_login":
-            password = request.form.get("password", "").strip()
+    if action == "host_login":
+        password = request.form.get("password", "").strip()
 
-            if password == HOST_PASSWORD:
-                session["host_logged_in"] = True
-                sidebar_message = "<div class='success'>Login host berjaya.</div>"
+        if password == HOST_PASSWORD:
+            session["host_logged_in"] = True
+            sidebar_message = "<div class='success'>Login host berjaya.</div>"
+        else:
+            sidebar_message = "<div class='warning'>Kata laluan host salah.</div>"
+
+    elif action == "host_logout":
+        session["host_logged_in"] = False
+        sidebar_message = "<div class='info'>Host telah logout.</div>"
+
+    elif action == "upload_csv":
+        if not session.get("host_logged_in", False):
+            sidebar_message = "<div class='warning'>Sila login host dahulu.</div>"
+        else:
+            uploaded_file = request.files.get("csv_file")
+
+            if not uploaded_file or uploaded_file.filename == "":
+                sidebar_message = "<div class='warning'>Sila pilih fail CSV.</div>"
             else:
-                sidebar_message = "<div class='warning'>Kata laluan host salah.</div>"
+                try:
+                    # Read the uploaded CSV directly into memory (no saving to disk)
+                    df_raw = pd.read_csv(uploaded_file, encoding="utf-8")
 
-        elif action == "host_logout":
-            session["host_logged_in"] = False
-            sidebar_message = "<div class='info'>Host telah logout.</div>"
+                    # Clean the CSV data (assuming you have the `clean_csv` function)
+                    new_df = clean_csv(df_raw)
 
-        elif action == "upload_csv":
-            if not session.get("host_logged_in", False):
-                sidebar_message = "<div class='warning'>Sila login host dahulu.</div>"
-            else:
-                uploaded_file = request.files.get("csv_file")
+                    # Check if all required columns are present
+                    missing_cols = [col for col in REQUIRED_COLS if col not in new_df.columns]
+                    if missing_cols:
+                        sidebar_message = f"""
+                        <div class='warning'>
+                            CSV baru tidak lengkap.<br>
+                            Kolum tiada: {missing_cols}
+                        </div>
+                        """
+                    else:
+                        # Save the cleaned data to the DATA_FILE (overwrite the existing file)
+                        new_df.to_csv(DATA_FILE, index=False, encoding="utf-8")
+                        reset_attendance()  # Reset the attendance after uploading new data
 
-                if not uploaded_file or uploaded_file.filename == "":
-                    sidebar_message = "<div class='warning'>Sila pilih fail CSV.</div>"
-                else:
-                    try:
-                        df_raw = pd.read_csv(uploaded_file, encoding="utf-8")
-                        new_df = clean_csv(df_raw)
+                        sidebar_message = """
+                        <div class='success'>
+                            CSV baru berjaya dimuat naik dan diproses.<br>
+                            Rekod kehadiran telah direset.
+                        </div>
+                        """
 
-                        missing_cols = [col for col in REQUIRED_COLS if col not in new_df.columns]
+                except Exception as e:
+                    sidebar_message = f"<div class='warning'>Gagal memproses fail: {e}</div>"
 
-                        if missing_cols:
-                            sidebar_message = f"""
-                            <div class='warning'>
-                                CSV baru tidak lengkap.<br>
-                                Kolum tiada: {missing_cols}
-                            </div>
-                            """
-                        else:
-                            new_df.to_csv(DATA_FILE, index=False, encoding="utf-8")
-                            reset_attendance()
+    # Other actions like 'submit' will go here
 
-                            sidebar_message = """
-                            <div class='success'>
-                                CSV baru berjaya dimuat naik.<br>
-                                Rekod kehadiran telah direset.
-                            </div>
-                            """
+    return html_page("", sidebar_message)
                             if action == "upload_csv":
     if not session.get("host_logged_in", False):
         sidebar_message = "<div class='warning'>Sila login host dahulu.</div>"
