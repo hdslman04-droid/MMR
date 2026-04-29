@@ -724,7 +724,7 @@ def upload_csv():
             return "<div class='warning'>Sila pilih fail CSV.</div>"
 
         try:
-            # Read the uploaded CSV directly into memory using BytesIO
+            # Read the uploaded CSV directly into memory using BytesIO (without saving to disk)
             file_stream = io.BytesIO(uploaded_file.read())
             df_raw = pd.read_csv(file_stream, encoding="utf-8")
 
@@ -734,13 +734,11 @@ def upload_csv():
             if new_df.empty:
                 return "<div class='warning'>CSV tidak lengkap. Kolum yang diperlukan tidak ada.</div>"
 
-            # Since we can't save the file to disk on Vercel, you can work with `new_df` in memory
-            # Process the data further or return a success message
+            # Process the data (without saving to disk on Vercel)
             return "<div class='success'>CSV berjaya dimuat naik dan diproses.</div>"
 
         except Exception as e:
             return f"<div class='warning'>Gagal memproses fail: {e}</div>"
-
 
     elif action == "submit":
             search_no = request.form.get("search_no", "").strip()
