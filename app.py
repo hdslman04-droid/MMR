@@ -748,22 +748,6 @@ def home():
 
     return html_page("", sidebar_message)     
 
-            except Exception as e:
-                sidebar_message = f"<div class='warning'>Fail tidak dapat dibaca: {e}</div>"
-
-                    except Exception as e:
-                        sidebar_message = f"<div class='warning'>Fail tidak dapat dibaca: {e}</div>"
-
-        elif action == "submit":
-            search_no = request.form.get("search_no", "").strip()
-
-            if not session.get("host_logged_in", False):
-                sidebar_message = "<div class='warning'>Sila login host dahulu.</div>"
-            elif not search_no:
-                sidebar_message = "<div class='warning'>Cari No Tentera dahulu.</div>"
-            else:
-                sidebar_message = submit_attendance_for_search(search_no)
-
     df = load_data()
     attendance_df = load_attendance()
 
