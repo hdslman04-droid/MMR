@@ -2,7 +2,6 @@ import base64
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
-import io
 
 import pandas as pd
 from flask import Flask, request, session
@@ -245,16 +244,11 @@ def generate_highlighted_layout(group_df):
             missing_meja.append(meja)
 
     highlighted = Image.alpha_composite(image, overlay)
+    temp_file = "highlighted_layout.png"
+    highlighted.convert("RGB").save(temp_file)
 
-    # Use BytesIO to save the image in memory instead of to disk
-    img_byte_arr = io.BytesIO()
-    highlighted.convert("RGB").save(img_byte_arr, format='PNG')
-    img_byte_arr.seek(0)  # Reset the pointer to the start of the BytesIO object
+    return get_base64_image(temp_file), missing_meja
 
-    # Convert to base64 for embedding in HTML
-    layout_base64 = base64.b64encode(img_byte_arr.getvalue()).decode()
-
-    return layout_base64, missing_meja
 
 def submit_attendance_for_search(search_no):
     df = load_data()
@@ -690,7 +684,7 @@ def html_page(content, sidebar_message="", search_no=""):
                 <div class="header">
                     {logo_html}
                     <div>
-                        <h1>Majlis Makan Malam Rejimental Penghargaan Brigedier Jeneral Dato' Zamzuri bin Harun</h1>
+                        <h1>Sistem Kehadiran Majlis Makan Malam Regimental KPA (GAJI)</h1>
                     </div>
                 </div>
 
@@ -709,44 +703,73 @@ def html_page(content, sidebar_message="", search_no=""):
 """
 
 
-@app.route("/", methods=["POST"])
+@app.route("/", methods=["GET", "POST"])
 def home():
     sidebar_message = ""
+    result_content = ""
+    search_no = ""
+
     action = request.form.get("action", "")
 
-    if action == "upload_csv":
-        # Check if the host is logged in
-        if not session.get("host_logged_in", False):
-            sidebar_message = "<div class='warning'>Sila login host dahulu.</div>"
-        else:
-            uploaded_file = request.files.get("csv_file")
+    if request.method == "POST":
+        if action == "host_login":
+            password = request.form.get("password", "").strip()
 
-            if not uploaded_file or uploaded_file.filename == "":
-                sidebar_message = "<div class='warning'>Sila pilih fail CSV.</div>"
+            if password == HOST_PASSWORD:
+                session["host_logged_in"] = True
+                sidebar_message = "<div class='success'>Login host berjaya.</div>"
             else:
-                try:
-                    print(f"File uploaded: {uploaded_file.filename}")  # Debug print
+                sidebar_message = "<div class='warning'>Kata laluan host salah.</div>"
 
-                    # Read the uploaded CSV file directly into a DataFrame
-                    df_raw = pd.read_csv(uploaded_file, encoding="utf-8")
-                    print(f"CSV Data loaded successfully: {df_raw.head()}")  # Debug print
+        elif action == "host_logout":
+            session["host_logged_in"] = False
+            sidebar_message = "<div class='info'>Host telah logout.</div>"
 
-                    # Clean the CSV data
-                    new_df = clean_csv(df_raw)
+        elif action == "upload_csv":
+            if not session.get("host_logged_in", False):
+                sidebar_message = "<div class='warning'>Sila login host dahulu.</div>"
+            else:
+                uploaded_file = request.files.get("csv_file")
 
-                    if new_df.empty:
-                        sidebar_message = "<div class='warning'>CSV tidak lengkap. Kolum yang diperlukan tidak ada.</div>"
-                    else:
-                        # Save the cleaned data to the DATA_FILE (overwrite the existing file)
-                        new_df.to_csv(DATA_FILE, index=False, encoding="utf-8")
-                        reset_attendance()  # Reset the attendance after uploading new data
+                if not uploaded_file or uploaded_file.filename == "":
+                    sidebar_message = "<div class='warning'>Sila pilih fail CSV.</div>"
+                else:
+                    try:
+                        df_raw = pd.read_csv(uploaded_file, encoding="utf-8")
+                        new_df = clean_csv(df_raw)
 
-                        sidebar_message = "<div class='success'>CSV berjaya dimuat naik dan diproses.</div>"
+                        missing_cols = [col for col in REQUIRED_COLS if col not in new_df.columns]
 
-                except Exception as e:
-                    sidebar_message = f"<div class='warning'>Gagal memproses fail: {e}</div>"
+                        if missing_cols:
+                            sidebar_message = f"""
+                            <div class='warning'>
+                                CSV baru tidak lengkap.<br>
+                                Kolum tiada: {missing_cols}
+                            </div>
+                            """
+                        else:
+                            new_df.to_csv(DATA_FILE, index=False, encoding="utf-8")
+                            reset_attendance()
 
-    return html_page("", sidebar_message)     
+                            sidebar_message = """
+                            <div class='success'>
+                                CSV baru berjaya dimuat naik.<br>
+                                Rekod kehadiran telah direset.
+                            </div>
+                            """
+
+                    except Exception as e:
+                        sidebar_message = f"<div class='warning'>Fail tidak dapat dibaca: {e}</div>"
+
+        elif action == "submit":
+            search_no = request.form.get("search_no", "").strip()
+
+            if not session.get("host_logged_in", False):
+                sidebar_message = "<div class='warning'>Sila login host dahulu.</div>"
+            elif not search_no:
+                sidebar_message = "<div class='warning'>Cari No Tentera dahulu.</div>"
+            else:
+                sidebar_message = submit_attendance_for_search(search_no)
 
     df = load_data()
     attendance_df = load_attendance()
