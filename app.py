@@ -2,6 +2,7 @@ import base64
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
+import io
 
 import pandas as pd
 from flask import Flask, request, session
@@ -244,11 +245,16 @@ def generate_highlighted_layout(group_df):
             missing_meja.append(meja)
 
     highlighted = Image.alpha_composite(image, overlay)
-    temp_file = "highlighted_layout.png"
-    highlighted.convert("RGB").save(temp_file)
 
-    return get_base64_image(temp_file), missing_meja
+    # Use BytesIO to save the image in memory instead of to disk
+    img_byte_arr = io.BytesIO()
+    highlighted.convert("RGB").save(img_byte_arr, format='PNG')
+    img_byte_arr.seek(0)  # Reset the pointer to the start of the BytesIO object
 
+    # Convert to base64 for embedding in HTML
+    layout_base64 = base64.b64encode(img_byte_arr.getvalue()).decode()
+
+    return layout_base64, missing_meja
 
 def submit_attendance_for_search(search_no):
     df = load_data()
