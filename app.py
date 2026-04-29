@@ -805,6 +805,35 @@ def home():
                         Rekod kehadiran telah direset.
                     </div>
                     """
+# Define the route to upload the CSV file
+@app.route("/", methods=["POST"])
+def upload_csv():
+    uploaded_file = request.files.get("csv_file")
+
+    if not uploaded_file or uploaded_file.filename == "":
+        return "<div class='warning'>Sila pilih fail CSV.</div>"
+
+    try:
+        # Read the CSV directly into memory without saving to disk
+        df_raw = pd.read_csv(uploaded_file, encoding="utf-8")
+
+        # Process and clean the CSV data
+        new_df = clean_csv(df_raw)  # Assuming `clean_csv` function processes the data
+
+        if new_df.empty:
+            return "<div class='warning'>CSV tidak lengkap. Kolum yang diperlukan tidak ada.</div>"
+
+        # Process the data in memory (no need to save to disk)
+        return "<div class='success'>CSV berjaya dimuat naik dan diproses.</div>"
+
+    except Exception as e:
+        return f"<div class='warning'>Gagal memproses fail: {e}</div>"
+
+if __name__ == "__main__":
+    app.run(debug=True)
+    
+
+                    
 
             except Exception as e:
                 sidebar_message = f"<div class='warning'>Fail tidak dapat dibaca: {e}</div>"
