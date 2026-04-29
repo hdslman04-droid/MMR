@@ -372,12 +372,11 @@ def build_sidebar(message="", search_no=""):
         <div class="side-card">
             <h3>Upload CSV Baru</h3>
 
-            <form method="POST" enctype="multipart/form-data">
-                <input type="file" name="csv_file" accept=".csv">
-                <button type="submit" name="action" value="upload_csv">
-                    Upload CSV & Reset Kehadiran
-                </button>
-            </form>
+           <form action="/" method="POST" enctype="multipart/form-data">
+    <label for="csv_file">Choose CSV file to upload:</label>
+    <input type="file" name="csv_file" id="csv_file" required>
+    <button type="submit" name="action" value="upload_csv">Upload CSV</button>
+</form>
         </div>
 
         {submit_html}
