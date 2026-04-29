@@ -2,4 +2,4 @@ flask
 pandas
 pillow
 gunicorn
-vercel
+render
