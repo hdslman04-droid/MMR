@@ -806,8 +806,6 @@ def home():
                     </div>
                     """
 
-                    st.rerun()  # Ensure page reloads with the new data
-
             except Exception as e:
                 sidebar_message = f"<div class='warning'>Fail tidak dapat dibaca: {e}</div>"
 
