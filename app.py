@@ -372,11 +372,12 @@ def build_sidebar(message="", search_no=""):
         <div class="side-card">
             <h3>Upload CSV Baru</h3>
 
-           <form action="/" method="POST" enctype="multipart/form-data">
-    <label for="csv_file">Choose CSV file to upload:</label>
-    <input type="file" name="csv_file" id="csv_file" required>
-    <button type="submit" name="action" value="upload_csv">Upload CSV</button>
-</form>
+            <form method="POST" enctype="multipart/form-data">
+                <input type="file" name="csv_file" accept=".csv">
+                <button type="submit" name="action" value="upload_csv">
+                    Upload CSV & Reset Kehadiran
+                </button>
+            </form>
         </div>
 
         {submit_html}
@@ -708,38 +709,64 @@ def html_page(content, sidebar_message="", search_no=""):
 """
 
 
-@app.route("/", methods=["POST"])
-def upload_csv():
+@app.route("/", methods=["GET", "POST"])
+def home():
+    sidebar_message = ""
+    result_content = ""
+    search_no = ""
+
     action = request.form.get("action", "")
 
-    if action == "upload_csv":
-        # Check if the host is logged in
-        if not session.get("host_logged_in", False):
-            return "<div class='warning'>Sila login host dahulu.</div>"
+    if request.method == "POST":
+        if action == "host_login":
+            password = request.form.get("password", "").strip()
 
-        uploaded_file = request.files.get("csv_file")
+            if password == HOST_PASSWORD:
+                session["host_logged_in"] = True
+                sidebar_message = "<div class='success'>Login host berjaya.</div>"
+            else:
+                sidebar_message = "<div class='warning'>Kata laluan host salah.</div>"
 
-        if not uploaded_file or uploaded_file.filename == "":
-            return "<div class='warning'>Sila pilih fail CSV.</div>"
+        elif action == "host_logout":
+            session["host_logged_in"] = False
+            sidebar_message = "<div class='info'>Host telah logout.</div>"
 
-        try:
-            # Read the uploaded CSV directly into memory using BytesIO (without saving to disk)
-            file_stream = io.BytesIO(uploaded_file.read())
-            df_raw = pd.read_csv(file_stream, encoding="utf-8")
+        elif action == "upload_csv":
+            if not session.get("host_logged_in", False):
+                sidebar_message = "<div class='warning'>Sila login host dahulu.</div>"
+            else:
+                uploaded_file = request.files.get("csv_file")
 
-            # Clean the CSV data
-            new_df = clean_csv(df_raw)
+                if not uploaded_file or uploaded_file.filename == "":
+                    sidebar_message = "<div class='warning'>Sila pilih fail CSV.</div>"
+                else:
+                    try:
+                        df_raw = pd.read_csv(uploaded_file, encoding="utf-8")
+                        new_df = clean_csv(df_raw)
 
-            if new_df.empty:
-                return "<div class='warning'>CSV tidak lengkap. Kolum yang diperlukan tidak ada.</div>"
+                        missing_cols = [col for col in REQUIRED_COLS if col not in new_df.columns]
 
-            # Process the data (without saving to disk on Vercel)
-            return "<div class='success'>CSV berjaya dimuat naik dan diproses.</div>"
+                        if missing_cols:
+                            sidebar_message = f"""
+                            <div class='warning'>
+                                CSV baru tidak lengkap.<br>
+                                Kolum tiada: {missing_cols}
+                            </div>
+                            """
+                        else:
+                            new_df.to_csv(DATA_FILE, index=False, encoding="utf-8")
+                            reset_attendance()
 
-        except Exception as e:
-            return f"<div class='warning'>Gagal memproses fail: {e}</div>"
+                            sidebar_message = """
+                            <div class='success'>
+                                CSV baru berjaya dimuat naik.<br>
+                                Rekod kehadiran telah direset.
+                            </div>
+                            """
+                    except Exception as e:
+                        sidebar_message = f"<div class='warning'>Fail tidak dapat dibaca: {e}</div>"
 
-    elif action == "submit":
+        elif action == "submit":
             search_no = request.form.get("search_no", "").strip()
 
             if not session.get("host_logged_in", False):
@@ -835,9 +862,11 @@ def upload_csv():
                 """
 
             result_content = f"""
-<div class="card">
-    <h2>Maklumat Kehadiran</h2>
-    <div class="table-wrap">
+            <div class="card">
+                <div class="success">Rekod dijumpai. BIL: {bil_value}</div>
+
+                <h2>Maklumat Kehadiran</h2>
+                <div class="table-wrap">
                     {table_html(group_df[display_cols])}
                 </div>
 
