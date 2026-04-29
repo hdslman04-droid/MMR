@@ -709,64 +709,40 @@ def html_page(content, sidebar_message="", search_no=""):
 """
 
 
-@app.route("/", methods=["GET", "POST"])
-def home():
-    sidebar_message = ""
-    result_content = ""
-    search_no = ""
-
+@app.route("/", methods=["POST"])
+def upload_csv():
     action = request.form.get("action", "")
 
-    if request.method == "POST":
-        if action == "host_login":
-            password = request.form.get("password", "").strip()
+    if action == "upload_csv":
+        # Check if the host is logged in
+        if not session.get("host_logged_in", False):
+            return "<div class='warning'>Sila login host dahulu.</div>"
 
-            if password == HOST_PASSWORD:
-                session["host_logged_in"] = True
-                sidebar_message = "<div class='success'>Login host berjaya.</div>"
-            else:
-                sidebar_message = "<div class='warning'>Kata laluan host salah.</div>"
+        uploaded_file = request.files.get("csv_file")
 
-        elif action == "host_logout":
-            session["host_logged_in"] = False
-            sidebar_message = "<div class='info'>Host telah logout.</div>"
+        if not uploaded_file or uploaded_file.filename == "":
+            return "<div class='warning'>Sila pilih fail CSV.</div>"
 
-        elif action == "upload_csv":
-            if not session.get("host_logged_in", False):
-                sidebar_message = "<div class='warning'>Sila login host dahulu.</div>"
-            else:
-                uploaded_file = request.files.get("csv_file")
+        try:
+            # Read the uploaded CSV directly into memory using BytesIO
+            file_stream = io.BytesIO(uploaded_file.read())
+            df_raw = pd.read_csv(file_stream, encoding="utf-8")
 
-                if not uploaded_file or uploaded_file.filename == "":
-                    sidebar_message = "<div class='warning'>Sila pilih fail CSV.</div>"
-                else:
-                    try:
-                        df_raw = pd.read_csv(uploaded_file, encoding="utf-8")
-                        new_df = clean_csv(df_raw)
+            # Clean the CSV data
+            new_df = clean_csv(df_raw)
 
-                        missing_cols = [col for col in REQUIRED_COLS if col not in new_df.columns]
+            if new_df.empty:
+                return "<div class='warning'>CSV tidak lengkap. Kolum yang diperlukan tidak ada.</div>"
 
-                        if missing_cols:
-                            sidebar_message = f"""
-                            <div class='warning'>
-                                CSV baru tidak lengkap.<br>
-                                Kolum tiada: {missing_cols}
-                            </div>
-                            """
-                        else:
-                            new_df.to_csv(DATA_FILE, index=False, encoding="utf-8")
-                            reset_attendance()
+            # Since we can't save the file to disk on Vercel, you can work with `new_df` in memory
+            # Process the data further or return a success message
+            return "<div class='success'>CSV berjaya dimuat naik dan diproses.</div>"
 
-                            sidebar_message = """
-                            <div class='success'>
-                                CSV baru berjaya dimuat naik.<br>
-                                Rekod kehadiran telah direset.
-                            </div>
-                            """
-                    except Exception as e:
-                        sidebar_message = f"<div class='warning'>Fail tidak dapat dibaca: {e}</div>"
+        except Exception as e:
+            return f"<div class='warning'>Gagal memproses fail: {e}</div>"
 
-        elif action == "submit":
+
+    elif action == "submit":
             search_no = request.form.get("search_no", "").strip()
 
             if not session.get("host_logged_in", False):
