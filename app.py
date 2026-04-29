@@ -861,12 +861,11 @@ def home():
                 </div>
                 """
 
-            result_content = f"""
-            <div class="card">
-                <div class="success">Rekod dijumpai. BIL: {bil_value}</div>
-
-                <h2>Maklumat Kehadiran</h2>
-                <div class="table-wrap">
+           result_content = f"""
+<div class="card">
+    <h2>Maklumat Kehadiran</h2>
+    <div class="table-wrap">
+    
                     {table_html(group_df[display_cols])}
                 </div>
 
